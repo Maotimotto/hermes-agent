@@ -75,6 +75,16 @@ export default function ControlPlanePage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 创建 session 表单
+  const [showCreate, setShowCreate] = useState(false);
+  const [newRuntime, setNewRuntime] = useState<"claude" | "codex">("claude");
+  const [newModel, setNewModel] = useState("claude-opus-4-7");
+  const [newRepo, setNewRepo] = useState("");
+
+  // 发 turn 表单
+  const [prompt, setPrompt] = useState("");
+  const [sending, setSending] = useState(false);
+
   const refreshSessions = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -116,6 +126,63 @@ export default function ControlPlanePage() {
       void e;
     }
   }, []);
+
+  const createSession = async () => {
+    setErr(null);
+    try {
+      const body: Record<string, unknown> = {
+        runtime_kind: newRuntime,
+        model: newModel,
+      };
+      if (newRepo.trim()) body.repo_path = newRepo.trim();
+      const data = await fetchJSON<SessionRecord>(
+        "/control-plane/sessions",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      setShowCreate(false);
+      await refreshSessions();
+      setSelectedSid(data.id);
+    } catch (e) {
+      setErr(`Create session failed: ${(e as Error).message}`);
+    }
+  };
+
+  const sendTurn = async () => {
+    if (!selectedSid || !prompt.trim()) return;
+    setSending(true);
+    setErr(null);
+    try {
+      await fetchJSON(
+        `/control-plane/sessions/${selectedSid}/turns`,
+        {
+          method: "POST",
+          body: JSON.stringify({ prompt: prompt.trim() }),
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      setPrompt("");
+      await refreshEvents(selectedSid);
+    } catch (e) {
+      setErr(`Send turn failed: ${(e as Error).message}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteSession = async (sid: string) => {
+    if (!confirm(`Delete session ${sid.slice(0, 16)}?`)) return;
+    try {
+      await fetchJSON(`/control-plane/sessions/${sid}`, { method: "DELETE" });
+      if (selectedSid === sid) setSelectedSid(null);
+      await refreshSessions();
+    } catch (e) {
+      setErr(`Delete failed: ${(e as Error).message}`);
+    }
+  };
 
   useEffect(() => {
     refreshSessions();
@@ -176,24 +243,142 @@ export default function ControlPlanePage() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            gap: 6,
           }}
         >
           <strong>Sessions</strong>
-          <button
-            onClick={refreshSessions}
-            disabled={loading}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                border: "1px solid #3b82f6",
+                borderRadius: 4,
+                background: "#3b82f6",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              + New
+            </button>
+            <button
+              onClick={refreshSessions}
+              disabled={loading}
+              style={{
+                fontSize: 12,
+                padding: "4px 8px",
+                border: "1px solid #d1d5db",
+                borderRadius: 4,
+                background: "white",
+                cursor: "pointer",
+              }}
+            >
+              {loading ? "..." : "↻"}
+            </button>
+          </div>
+        </header>
+        {showCreate && (
+          <div
             style={{
-              fontSize: 12,
-              padding: "4px 8px",
-              border: "1px solid #d1d5db",
-              borderRadius: 4,
-              background: "white",
-              cursor: "pointer",
+              padding: 12,
+              background: "#f9fafb",
+              borderBottom: "1px solid #e5e7eb",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            {loading ? "..." : "Refresh"}
-          </button>
-        </header>
+            <label style={{ fontSize: 12, color: "#374151" }}>
+              Runtime
+              <select
+                value={newRuntime}
+                onChange={(e) =>
+                  setNewRuntime(e.target.value as "claude" | "codex")
+                }
+                style={{
+                  display: "block",
+                  width: "100%",
+                  marginTop: 4,
+                  padding: "4px 6px",
+                  fontSize: 12,
+                  border: "1px solid #d1d5db",
+                  borderRadius: 4,
+                }}
+              >
+                <option value="claude">claude</option>
+                <option value="codex">codex</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 12, color: "#374151" }}>
+              Model
+              <input
+                value={newModel}
+                onChange={(e) => setNewModel(e.target.value)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  marginTop: 4,
+                  padding: "4px 6px",
+                  fontSize: 12,
+                  border: "1px solid #d1d5db",
+                  borderRadius: 4,
+                  boxSizing: "border-box",
+                }}
+              />
+            </label>
+            <label style={{ fontSize: 12, color: "#374151" }}>
+              Repo path (optional)
+              <input
+                value={newRepo}
+                onChange={(e) => setNewRepo(e.target.value)}
+                placeholder="/home/.../project"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  marginTop: 4,
+                  padding: "4px 6px",
+                  fontSize: 12,
+                  border: "1px solid #d1d5db",
+                  borderRadius: 4,
+                  boxSizing: "border-box",
+                }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={createSession}
+                style={{
+                  flex: 1,
+                  padding: "6px 10px",
+                  background: "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Create
+              </button>
+              <button
+                onClick={() => setShowCreate(false)}
+                style={{
+                  flex: 1,
+                  padding: "6px 10px",
+                  background: "white",
+                  color: "#374151",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <div style={{ flex: 1, overflow: "auto" }}>
           {sessions.length === 0 && (
             <div style={{ padding: 12, color: "#9ca3af", fontSize: 13 }}>
@@ -209,6 +394,7 @@ export default function ControlPlanePage() {
                 borderBottom: "1px solid #f3f4f6",
                 cursor: "pointer",
                 background: selectedSid === s.id ? "#eff6ff" : "white",
+                position: "relative",
               }}
             >
               <div
@@ -246,6 +432,31 @@ export default function ControlPlanePage() {
                 >
                   📁 {s.repo_path}
                 </div>
+              )}
+              {selectedSid === s.id && s.status !== "stopped" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteSession(s.id);
+                  }}
+                  title="Stop / delete session"
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    width: 22,
+                    height: 22,
+                    border: "1px solid #fca5a5",
+                    background: "white",
+                    color: "#ef4444",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
               )}
             </div>
           ))}
@@ -327,6 +538,59 @@ export default function ControlPlanePage() {
             </div>
           ))}
         </div>
+        {selectedSid && (
+          <div
+            style={{
+              padding: 10,
+              borderTop: "1px solid #e5e7eb",
+              background: "#f9fafb",
+              display: "flex",
+              gap: 8,
+            }}
+          >
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  sendTurn();
+                }
+              }}
+              placeholder="Send a turn to this session… (Ctrl/Cmd+Enter)"
+              rows={2}
+              style={{
+                flex: 1,
+                padding: 8,
+                fontSize: 13,
+                border: "1px solid #d1d5db",
+                borderRadius: 4,
+                resize: "vertical",
+                fontFamily: "inherit",
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              onClick={sendTurn}
+              disabled={sending || !prompt.trim()}
+              style={{
+                padding: "0 14px",
+                background:
+                  sending || !prompt.trim() ? "#9ca3af" : "#3b82f6",
+                color: "white",
+                border: "none",
+                borderRadius: 4,
+                cursor:
+                  sending || !prompt.trim() ? "not-allowed" : "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* ── 右：approvals ──────────────────────── */}

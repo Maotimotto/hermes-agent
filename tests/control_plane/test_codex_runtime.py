@@ -231,6 +231,7 @@ class TestStartSession:
                 codex_bin="/usr/bin/codex",
                 codex_home="/home/test/.codex",
                 permission_profile="full-access",
+                approval_callback=None,
             )
 
 

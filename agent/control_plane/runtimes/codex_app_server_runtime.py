@@ -43,6 +43,7 @@ from agent.control_plane.hermes_event import (
 )
 from agent.control_plane.ids import new_turn_id
 from agent.control_plane.store import SessionStore
+from agent.control_plane.approval import ApprovalGate, request_tool_approval
 from agent.transports.codex_app_server import CodexAppServerClient, check_codex_binary
 from agent.transports.codex_app_server_session import CodexAppServerSession
 
@@ -316,15 +317,19 @@ class CodexAppServerRuntime(AgentRuntime):
         codex_bin: str = "codex",
         codex_home: str | None = None,
         permission_profile: str | None = None,
+        approval_gate: "ApprovalGate | None" = None,
     ) -> None:
         self._store = store
         self._codex_bin = codex_bin
         self._codex_home = codex_home
         self._permission_profile = permission_profile
+        self._approval_gate = approval_gate
         # session_id (provider_session_id) → CodexAppServerSession
         self._sessions: dict[str, CodexAppServerSession] = {}
         # turn_id → session_id（用于 interrupt_turn 按 turn_id 查找 session）
         self._turn_to_session: dict[str, str] = {}
+        # session_id → 主 loop（approval_callback 跑在 executor 线程，需回到 loop）
+        self._loops: dict[str, asyncio.AbstractEventLoop] = {}
         self._lock = threading.Lock()
 
     # ── 生命周期 ──────────────────────────────────────────────
@@ -336,11 +341,13 @@ class CodexAppServerRuntime(AgentRuntime):
           → 内部创建 CodexAppServerClient，执行 initialize 握手 + thread/start
         """
         # 委托：创建 session 对象
+        session_id_cell: dict[str, str] = {"id": ""}
         session = CodexAppServerSession(
             cwd=input.repo_path,
             codex_bin=self._codex_bin,
             codex_home=self._codex_home,
             permission_profile=self._permission_profile,
+            approval_callback=self._build_approval_callback(session_id_cell),
         )
 
         # 委托：spawn 子进程 + initialize + thread/start
@@ -359,6 +366,9 @@ class CodexAppServerRuntime(AgentRuntime):
         # 缓存 session
         with self._lock:
             self._sessions[thread_id] = session
+            self._loops[thread_id] = asyncio.get_running_loop()
+        # 回填 cell，供 approval_callback 跨线程使用
+        session_id_cell["id"] = thread_id
 
         logger.info(
             "CodexAppServerRuntime: session started, thread_id=%s cwd=%s",
@@ -522,6 +532,63 @@ class CodexAppServerRuntime(AgentRuntime):
             session.request_interrupt()
 
     # ── 审批 ──────────────────────────────────────────────────
+
+    def _build_approval_callback(
+        self, session_id_cell: dict[str, str]
+    ):
+        """构造 CodexAppServerSession 的 approval_callback。
+
+        签名（被 codex session 在 executor 线程调用）：
+            (command, description, allow_permanent=False) -> choice_str
+        其中 choice_str ∈ {'once','session','always','deny'}，由 codex 层
+        _approval_choice_to_codex_decision 映射为 codex 协议决策值。
+
+        策略：
+          - 未配置 gate → 'deny'（fail-closed，与原默认 callback 一致）
+          - 配置后桥到 ApprovalGate.evaluate：
+              approved → 'once'
+              denied   → 'deny'
+        """
+        gate = self._approval_gate
+        if gate is None:
+            return None
+
+        def callback(command, description="", allow_permanent=False):
+            session_id = session_id_cell.get("id", "")
+            loop = self._loops.get(session_id) if session_id else None
+            if loop is None:
+                logger.warning(
+                    "CodexAppServerRuntime: no loop for approval callback, "
+                    "session_id=%s, fail-closed", session_id,
+                )
+                return "deny"
+
+            # codex callback 是同步、跑在 executor 线程；通过
+            # run_coroutine_threadsafe 桥到主 loop 跑 ApprovalGate.evaluate
+            coro = request_tool_approval(
+                gate,
+                session_id=session_id,
+                turn_id="",  # codex approval 不直接带 turn_id
+                tool_name="Bash" if command else "Write",
+                tool_input={"command": command, "description": description},
+            )
+            fut = asyncio.run_coroutine_threadsafe(coro, loop)
+            try:
+                allowed, source = fut.result(timeout=300)
+            except Exception:
+                logger.exception(
+                    "CodexAppServerRuntime: approval bridge raised, fail-closed"
+                )
+                return "deny"
+            logger.info(
+                "CodexAppServerRuntime: approval %s tool=%s source=%s",
+                "allow" if allowed else "deny",
+                "Bash" if command else "Write",
+                source,
+            )
+            return "once" if allowed else "deny"
+
+        return callback
 
     async def resolve_approval(self, decision: ApprovalDecision) -> None:
         """将 Hermes 审批决策回传给 provider。

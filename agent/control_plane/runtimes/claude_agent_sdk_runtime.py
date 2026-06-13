@@ -33,6 +33,7 @@ from agent.control_plane.hermes_event import (
     TurnFailedEvent,
     TurnStartedEvent,
 )
+from agent.control_plane.approval import ApprovalGate, request_tool_approval
 from agent.control_plane.ids import new_turn_id
 
 from .interface import (
@@ -281,13 +282,17 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
     def __init__(
         self,
         config: dict[str, Any],
+        approval_gate: "ApprovalGate | None" = None,
     ) -> None:
         """
         Args:
             config: hermes config.providers.claude 配置字典。
                     必须包含 api_key 和 model，可选 base_url。
+            approval_gate: 可选 ApprovalGate；提供后所有 SDK 工具调用都会先
+                    经过 gate.evaluate。None 表示不启用审批（向后兼容）。
         """
         self._config = config
+        self._approval_gate = approval_gate
         # hermes_session_id → provider_session_id
         self._sessions: dict[str, str] = {}
         # turn_id → asyncio.Event（用于 interrupt_turn）
@@ -397,6 +402,7 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
                 env=env,
                 max_turns=max_turns,
                 cwd=worktree_path,
+                can_use_tool=self._build_can_use_tool(session_id, turn_id),
             )
 
             # ── SDK 调用 ─────────────────────────────────
@@ -500,6 +506,53 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
             )
 
     # ── 审批 ──────────────────────────────────────────────────
+
+    def _build_can_use_tool(self, session_id: str, turn_id: str):
+        """构造传给 ClaudeAgentOptions.can_use_tool 的回调。
+
+        回调签名（SDK 0.2.101）：
+            async def(tool_name: str,
+                     tool_input: dict[str, Any],
+                     ctx: ToolPermissionContext)
+                -> PermissionResultAllow | PermissionResultDeny
+
+        策略：
+          - 未配置 ApprovalGate → 一律放行（保留 SDK 原行为）
+          - 配置后委托 request_tool_approval：approved → Allow；其余 → Deny
+        """
+        gate = self._approval_gate
+        if gate is None:
+            return None  # SDK 视 None 为 "不拦截"
+
+        # 延迟导入，避免无 SDK 时模块级 import 失败
+        from claude_agent_sdk import (
+            PermissionResultAllow,
+            PermissionResultDeny,
+        )
+
+        async def can_use_tool(tool_name, tool_input, ctx):
+            allowed, source = await request_tool_approval(
+                gate,
+                session_id=session_id,
+                turn_id=turn_id,
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
+            if allowed:
+                logger.debug(
+                    "ClaudeAgentSdkRuntime: approved tool=%s source=%s turn=%s",
+                    tool_name, source, turn_id[:8],
+                )
+                return PermissionResultAllow()
+            logger.info(
+                "ClaudeAgentSdkRuntime: denied tool=%s source=%s turn=%s",
+                tool_name, source, turn_id[:8],
+            )
+            return PermissionResultDeny(
+                message=f"Hermes approval gate denied (source={source})",
+            )
+
+        return can_use_tool
 
     async def resolve_approval(self, decision: ApprovalDecision) -> None:
         """将 Hermes 审批决策回传给 provider。

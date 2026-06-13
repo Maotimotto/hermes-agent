@@ -198,6 +198,22 @@ async def delete_session(
     await store.update_session_status(session_id, "stopped")
     rec.status = "stopped"
 
+    # Wave 8.4: 取消该 session 还在跑的 turn（如果有）
+    cancelled = state.runtime_registry.cancel_session_turns(session_id)
+    if cancelled:
+        logger.info(
+            "[sessions] cancelled %d active turn(s) on session=%s",
+            cancelled, session_id[:8],
+        )
+        state.event_bus.publish(
+            session_id,
+            {
+                "type": "session.stopped",
+                "session_id": session_id,
+                "cancelled_turns": cancelled,
+            },
+        )
+
     # Cleanup workspace if any
     if rec.workspace_id:
         try:

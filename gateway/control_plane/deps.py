@@ -76,6 +76,23 @@ class RuntimeRegistry:
     def remove_turn(self, turn_id: str) -> None:
         self._active_turns.pop(turn_id, None)
 
+    def cancel_session_turns(self, session_id: str) -> int:
+        """Cancel all active turn tasks belonging to a session.
+
+        Returns the number of tasks that were actually cancelled (i.e. those
+        that were still running).  Used by DELETE /sessions to make sure no
+        runtime keeps streaming after the session is stopped.
+        """
+        cancelled = 0
+        for tid, (sid, task) in list(self._active_turns.items()):
+            if sid != session_id:
+                continue
+            if not task.done():
+                task.cancel()
+                cancelled += 1
+            self._active_turns.pop(tid, None)
+        return cancelled
+
     async def shutdown(self) -> None:
         """Cancel all active turn tasks."""
         for tid, (_, task) in list(self._active_turns.items()):

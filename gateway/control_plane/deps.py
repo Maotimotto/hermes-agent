@@ -17,6 +17,7 @@ from typing import Any, AsyncIterator
 
 from fastapi import Depends, Request
 
+from agent.control_plane.approval import ApprovalGate
 from agent.control_plane.ids import new_turn_id
 from agent.control_plane.store import (
     ApprovalRecord,
@@ -127,6 +128,20 @@ class AppState:
         self.workspace_manager: WorkspaceManager = WorkspaceManager(
             store=InMemoryWorkspaceStore()
         )
+        # ApprovalGate is created lazily after the store finishes init —
+        # see ``ensure_approval_gate`` below (called from app lifespan).
+        self.approval_gate: ApprovalGate | None = None
+
+    def ensure_approval_gate(self) -> ApprovalGate:
+        """Construct the ApprovalGate once the store is ready.
+
+        Idempotent — safe to call multiple times.
+        """
+        if self.approval_gate is None:
+            if self.store is None:
+                raise RuntimeError("SessionStore must be initialized before ApprovalGate")
+            self.approval_gate = ApprovalGate(self.store, self.event_bus)
+        return self.approval_gate
 
 
 # ── Dependency helpers (used in route signatures) ────────────────────────────
@@ -155,3 +170,7 @@ def get_workspace_manager(
     state: AppState = Depends(get_app_state),
 ) -> WorkspaceManager:
     return state.workspace_manager
+
+
+def get_approval_gate(state: AppState = Depends(get_app_state)) -> ApprovalGate:
+    return state.ensure_approval_gate()

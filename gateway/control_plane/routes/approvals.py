@@ -13,11 +13,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from agent.control_plane.approval import ApprovalGate
 from agent.control_plane.store import ApprovalRecord, SessionStore
 from gateway.control_plane.deps import (
     AppState,
     EventBus,
     get_app_state,
+    get_approval_gate,
     get_event_bus,
     get_store,
 )
@@ -107,14 +109,13 @@ async def resolve_approval(
     approval_id: str,
     body: ApprovalDecisionRequest,
     store: SessionStore = Depends(get_store),
-    state: AppState = Depends(get_app_state),
+    gate: ApprovalGate = Depends(get_approval_gate),
 ) -> ApprovalDecisionResponse:
-    """Resolve an approval request.
+    """Resolve an approval request via the ApprovalGate.
 
-    1. Validate the approval exists and is pending.
-    2. Compute ttl_until if ttl is given.
-    3. Record the decision.
-    4. Publish approval.resolved event to EventBus.
+    Routes through ``ApprovalGate.resolve`` so that any runtime currently
+    awaiting this approval is woken up.  The gate also handles persistence
+    and ``approval.resolved`` event publication.
     """
     existing = await store.get_approval(approval_id)
     if existing is None:
@@ -122,31 +123,15 @@ async def resolve_approval(
             status_code=404, detail=f"Approval not found: {approval_id}"
         )
 
-    now = datetime.now(timezone.utc)
-    ttl_until: str | None = None
-    if body.ttl is not None and body.ttl > 0:
-        ttl_until = (now + timedelta(seconds=body.ttl)).isoformat()
-
-    await store.record_decision(
+    await gate.resolve(
         approval_id,
         body.decision,
-        decided_by=body.decided_by,
-        ttl_until=ttl_until,
-    )
-
-    # Publish to event bus
-    state.event_bus.publish(
-        existing.session_id,
-        {
-            "type": "approval.resolved",
-            "approval_id": approval_id,
-            "session_id": existing.session_id,
-            "decision": body.decision,
-        },
+        decided_by=body.decided_by or "user",
+        ttl_seconds=body.ttl,
     )
 
     return ApprovalDecisionResponse(
         id=approval_id,
         decision=body.decision,
-        decided_at=now.isoformat(),
+        decided_at=datetime.now(timezone.utc).isoformat(),
     )

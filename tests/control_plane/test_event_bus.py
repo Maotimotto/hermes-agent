@@ -137,7 +137,12 @@ class TestPersistenceHook:
         bus.publish("s1", {"type": "tool.started"})
         await asyncio.sleep(0.01)
         assert len(store.events) == 1
-        assert store.events[0]["type"] == "tool.started"
+        # The bus coerces dict payloads into EventRecord before persisting.
+        from agent.control_plane.store import EventRecord
+        rec = store.events[0]
+        assert isinstance(rec, EventRecord)
+        assert rec.type == "tool.started"
+        assert rec.session_id == "s1"
 
     @pytest.mark.asyncio
     async def test_store_failure_does_not_break_pub(self) -> None:
@@ -151,3 +156,28 @@ class TestPersistenceHook:
         assert ev["type"] == "tool.started"
         await asyncio.sleep(0.01)
         assert store.events == []
+
+    @pytest.mark.asyncio
+    async def test_real_session_store_round_trip(self, tmp_path: Any) -> None:
+        """End-to-end: publish → real SessionStore → query back."""
+        from agent.control_plane.store import SessionStore, SessionRecord
+
+        db_path = str(tmp_path / "bus.db")
+        store = SessionStore(db_path=db_path)
+        await store.init()
+        try:
+            # Must create a session first because events table FKs it.
+            await store.create_session(
+                SessionRecord(
+                    id="sess_bus_test",
+                    runtime_kind="codex",
+                )
+            )
+            bus = EventBus(store=store)
+            bus.publish("sess_bus_test", {"type": "tool.started", "tool": "ls"})
+            # Allow the scheduled persist task to run.
+            await asyncio.sleep(0.05)
+            events = await store.list_events(session_id="sess_bus_test")
+            assert any(e.type == "tool.started" for e in events)
+        finally:
+            await store.close()

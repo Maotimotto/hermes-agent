@@ -92,6 +92,11 @@ async def init_store(app: FastAPI) -> None:
     store = SessionStore(db_path=db_path)
     await store.init()
     state.store = store
+    # Wire the EventBus persistence hook to the store so every published
+    # event is also written to the events table.
+    state.event_bus._store = store  # type: ignore[attr-defined]
+    # Eagerly create the ApprovalGate now that the store is ready.
+    state.ensure_approval_gate()
     app.state._cp_initialized = True  # type: ignore[attr-defined]
     logger.info("[control-plane] store initialized (db_path=%s)", db_path or "default")
 

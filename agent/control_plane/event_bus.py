@@ -203,6 +203,24 @@ class EventBus:
 
     async def _safe_persist(self, payload: dict[str, Any]) -> None:
         try:
-            await self._store.append_event(payload)  # type: ignore[union-attr]
+            event = self._coerce_for_store(payload)
+            await self._store.append_event(event)  # type: ignore[union-attr]
         except Exception as exc:
             logger.warning("[EventBus] persist failed: %s", exc)
+
+    def _coerce_for_store(self, payload: dict[str, Any]) -> Any:
+        """Lazy-import EventRecord and wrap a dict payload.
+
+        If the payload already is an EventRecord (or any object with a
+        ``session_id`` attribute), pass it through untouched.
+        """
+        from agent.control_plane.store import EventRecord  # local import
+
+        if isinstance(payload, EventRecord):
+            return payload
+        return EventRecord(
+            session_id=payload.get("session_id", ""),
+            type=payload.get("type", "unknown"),
+            payload=payload,
+            turn_id=payload.get("turn_id"),
+        )

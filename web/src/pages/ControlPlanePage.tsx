@@ -55,9 +55,7 @@ type ApprovalRecord = {
   created_at?: string;
 };
 
-type ApprovalsResponse = {
-  approvals: ApprovalRecord[];
-};
+type ApprovalsResponse = ApprovalRecord[];
 
 const STATUS_COLORS: Record<string, string> = {
   created: "#6b7280",
@@ -111,7 +109,7 @@ export default function ControlPlanePage() {
       const data = await fetchJSON<ApprovalsResponse>(
         "/control-plane/approvals?status=pending",
       );
-      setApprovals(data.approvals);
+      setApprovals(data);
     } catch (e) {
       // approvals route 可能还没 list 接口；静默忽略
       setApprovals([]);

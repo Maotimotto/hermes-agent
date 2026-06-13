@@ -30,6 +30,7 @@ def create_control_plane_app(
     *,
     db_path: str | None = None,
     run_migrations: bool = True,
+    runtime_configs: dict[str, dict[str, Any]] | None = None,
 ) -> FastAPI:
     """Build the FastAPI sub-app for the control plane.
 
@@ -39,6 +40,11 @@ def create_control_plane_app(
         Path to the SQLite database.  Defaults to ``~/.hermes/control_plane.db``.
     run_migrations : bool
         Whether to run DB migrations on startup (default True).
+    runtime_configs : dict[str, dict] | None
+        Mapping kind → provider config used by :func:`build_default_runtimes`.
+        When ``None`` (default) no runtime is registered automatically;
+        the caller is expected to ``state.runtime_registry.register(...)``
+        manually (e.g. tests with mocks).
     """
     app = FastAPI(
         title="Hermes Daemon API",
@@ -51,6 +57,7 @@ def create_control_plane_app(
 
     # Store config for deferred init
     app.state._cp_db_path = db_path  # type: ignore[attr-defined]
+    app.state._cp_runtime_configs = runtime_configs  # type: ignore[attr-defined]
     app.state._cp_initialized = False  # type: ignore[attr-defined]
 
     # Register startup event to init store
@@ -86,6 +93,7 @@ async def init_store(app: FastAPI) -> None:
 
     state: AppState = app.state.cp  # type: ignore[assignment]
     db_path = app.state._cp_db_path  # type: ignore[attr-defined]
+    runtime_configs = app.state._cp_runtime_configs  # type: ignore[attr-defined]
 
     from agent.control_plane.store import SessionStore
 
@@ -96,7 +104,24 @@ async def init_store(app: FastAPI) -> None:
     # event is also written to the events table.
     state.event_bus._store = store  # type: ignore[attr-defined]
     # Eagerly create the ApprovalGate now that the store is ready.
-    state.ensure_approval_gate()
+    gate = state.ensure_approval_gate()
+
+    # Wave 8.2: 用工厂构造默认 runtime 并注册到 RuntimeRegistry
+    if runtime_configs:
+        from agent.control_plane.runtimes.factory import build_default_runtimes
+
+        runtimes = build_default_runtimes(
+            store=store,
+            approval_gate=gate,
+            runtime_configs=runtime_configs,
+        )
+        for kind, rt in runtimes.items():
+            state.runtime_registry.register(kind, rt)
+        logger.info(
+            "[control-plane] registered runtimes: %s",
+            sorted(runtimes.keys()),
+        )
+
     app.state._cp_initialized = True  # type: ignore[attr-defined]
     logger.info("[control-plane] store initialized (db_path=%s)", db_path or "default")
 
@@ -106,13 +131,17 @@ def mount_to(
     *,
     prefix: str = "/control-plane",
     db_path: str | None = None,
+    runtime_configs: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Mount the control-plane sub-app onto an existing FastAPI application.
 
     Call this once from your gateway ``main.py``::
 
         from gateway.control_plane import mount_to
-        mount_to(app)
+        mount_to(app, runtime_configs={
+            "claude": {"api_key": "...", "model": "..."},
+            "codex":  {"codex_bin": "codex"},
+        })
 
     Parameters
     ----------
@@ -122,7 +151,11 @@ def mount_to(
         URL prefix for all control-plane routes (default ``/control-plane``).
     db_path : str | None
         Override the SQLite DB path (mostly useful in tests).
+    runtime_configs : dict[str, dict] | None
+        Per-runtime config dict; passed through to ``build_default_runtimes``.
     """
-    cp_app = create_control_plane_app(db_path=db_path)
+    cp_app = create_control_plane_app(
+        db_path=db_path, runtime_configs=runtime_configs
+    )
     main_app.mount(prefix, cp_app)
     logger.info("[control-plane] mounted at %s", prefix)

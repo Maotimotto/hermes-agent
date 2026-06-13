@@ -31,38 +31,10 @@ from agent.control_plane.runtimes.interface import AgentRuntime, HealthStatus
 logger = logging.getLogger(__name__)
 
 
-# ── EventBus (lightweight in-process pub/sub) ────────────────────────────────
+# ── EventBus (re-exported from agent.control_plane.event_bus) ───────────────
 
 
-class EventBus:
-    """In-process event bus for real-time WebSocket push.
-
-    Subscribers register with `subscribe(session_id)` which returns an
-    ``asyncio.Queue``.  Events published via ``publish(event)`` are fanned
-    out to all queues subscribed to that session.
-    """
-
-    def __init__(self) -> None:
-        self._subscribers: dict[str, list[asyncio.Queue[dict[str, Any]]]] = {}
-
-    def subscribe(self, session_id: str) -> asyncio.Queue[dict[str, Any]]:
-        q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._subscribers.setdefault(session_id, []).append(q)
-        return q
-
-    def unsubscribe(self, session_id: str, q: asyncio.Queue[dict[str, Any]]) -> None:
-        subs = self._subscribers.get(session_id)
-        if subs is not None:
-            try:
-                subs.remove(q)
-            except ValueError:
-                pass
-            if not subs:
-                del self._subscribers[session_id]
-
-    def publish(self, session_id: str, event: dict[str, Any]) -> None:
-        for q in self._subscribers.get(session_id, []):
-            q.put_nowait(event)
+from agent.control_plane.event_bus import EventBus  # noqa: E402,F401
 
 
 # ── RuntimeRegistry ──────────────────────────────────────────────────────────

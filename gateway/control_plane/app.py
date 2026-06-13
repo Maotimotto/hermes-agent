@@ -132,12 +132,17 @@ def mount_to(
     prefix: str = "/control-plane",
     db_path: str | None = None,
     runtime_configs: dict[str, dict[str, Any]] | None = None,
+    auto_load_runtime_configs: bool = True,
 ) -> None:
     """Mount the control-plane sub-app onto an existing FastAPI application.
 
     Call this once from your gateway ``main.py``::
 
         from gateway.control_plane import mount_to
+        mount_to(app)  # auto-loads runtime_configs from ~/.hermes/config.yaml
+
+    Or override::
+
         mount_to(app, runtime_configs={
             "claude": {"api_key": "...", "model": "..."},
             "codex":  {"codex_bin": "codex"},
@@ -153,7 +158,28 @@ def mount_to(
         Override the SQLite DB path (mostly useful in tests).
     runtime_configs : dict[str, dict] | None
         Per-runtime config dict; passed through to ``build_default_runtimes``.
+        When ``None`` and ``auto_load_runtime_configs=True``, auto-load from
+        hermes config; pass ``runtime_configs={}`` to explicitly disable.
+    auto_load_runtime_configs : bool
+        When True (default) and ``runtime_configs is None``, call
+        :func:`agent.control_plane.config_adapter.load_runtime_configs`.
     """
+    if runtime_configs is None and auto_load_runtime_configs:
+        try:
+            from agent.control_plane.config_adapter import load_runtime_configs
+
+            runtime_configs = load_runtime_configs()
+            if runtime_configs:
+                logger.info(
+                    "[control-plane] auto-loaded runtime_configs: %s",
+                    sorted(runtime_configs.keys()),
+                )
+        except Exception:
+            logger.exception(
+                "[control-plane] failed to auto-load runtime_configs from hermes config"
+            )
+            runtime_configs = None
+
     cp_app = create_control_plane_app(
         db_path=db_path, runtime_configs=runtime_configs
     )

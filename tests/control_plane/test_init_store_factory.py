@@ -97,3 +97,82 @@ class TestInitStoreRuntimeRegistration:
         mount_to(main, db_path=db_path, runtime_configs=cfg)
         assert seen["runtime_configs"] == cfg
         assert seen["db_path"] == db_path
+
+    def test_mount_to_auto_loads_when_none(self, db_path, monkeypatch):
+        """runtime_configs=None + auto_load_runtime_configs=True → 调用 load_runtime_configs。"""
+        from fastapi import FastAPI
+        from gateway.control_plane import app as app_mod
+        from agent.control_plane import config_adapter
+
+        loaded = {"claude": {"api_key": "auto-k", "model": "auto-m"}}
+        monkeypatch.setattr(
+            config_adapter, "load_runtime_configs", lambda: loaded
+        )
+
+        seen = {}
+        original = app_mod.create_control_plane_app
+
+        def spy(**kwargs):
+            seen.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(app_mod, "create_control_plane_app", spy)
+
+        main = FastAPI()
+        mount_to(main, db_path=db_path)  # 不传 runtime_configs
+        assert seen["runtime_configs"] == loaded
+
+    def test_mount_to_auto_load_disabled(self, db_path, monkeypatch):
+        """auto_load_runtime_configs=False → 不调用 load_runtime_configs。"""
+        from fastapi import FastAPI
+        from gateway.control_plane import app as app_mod
+        from agent.control_plane import config_adapter
+
+        called = {"n": 0}
+
+        def fake_load():
+            called["n"] += 1
+            return {"claude": {"api_key": "k", "model": "m"}}
+
+        monkeypatch.setattr(config_adapter, "load_runtime_configs", fake_load)
+
+        seen = {}
+        original = app_mod.create_control_plane_app
+
+        def spy(**kwargs):
+            seen.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(app_mod, "create_control_plane_app", spy)
+
+        main = FastAPI()
+        mount_to(main, db_path=db_path, auto_load_runtime_configs=False)
+        assert called["n"] == 0
+        assert seen["runtime_configs"] is None
+
+    def test_mount_to_explicit_empty_disables_auto_load(self, db_path, monkeypatch):
+        """显式 runtime_configs={} → 跳过 auto-load，传空 dict。"""
+        from fastapi import FastAPI
+        from gateway.control_plane import app as app_mod
+        from agent.control_plane import config_adapter
+
+        called = {"n": 0}
+        monkeypatch.setattr(
+            config_adapter,
+            "load_runtime_configs",
+            lambda: called.__setitem__("n", called["n"] + 1) or {"x": {}},
+        )
+
+        seen = {}
+        original = app_mod.create_control_plane_app
+
+        def spy(**kwargs):
+            seen.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(app_mod, "create_control_plane_app", spy)
+
+        main = FastAPI()
+        mount_to(main, db_path=db_path, runtime_configs={})
+        assert called["n"] == 0
+        assert seen["runtime_configs"] == {}

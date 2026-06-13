@@ -66,9 +66,14 @@ async def create_session(
     """Create a new session.
 
     1. Generate session ID.
-    2. Persist SessionRecord.
-    3. (Future) create workspace via WorkspaceManager.
-    4. Return session detail.
+    2. (Optional) create workspace via WorkspaceManager.
+    3. Persist SessionRecord.
+    4. Wave 8.3: if a runtime is registered for ``runtime_kind``,
+       call ``runtime.start_session`` and bind session_id ↔ kind.
+       Failures are non-fatal — the DB session still exists in 'created'
+       state and the caller can retry / debug.
+    5. Publish session.started event.
+    6. Return session detail.
     """
     sid = new_session_id()
 
@@ -95,6 +100,42 @@ async def create_session(
         metadata=body.metadata,
     )
     await store.create_session(record)
+
+    # Wave 8.3: 如果 registry 有匹配 runtime，调 start_session
+    runtime = state.runtime_registry.get(body.runtime_kind)
+    if runtime is not None and body.repo_path:
+        try:
+            from agent.control_plane.runtimes.interface import (
+                StartSessionInput,
+            )
+
+            ref = await runtime.start_session(
+                StartSessionInput(
+                    repo_path=body.repo_path,
+                    branch=body.base_branch,
+                )
+            )
+            # 绑定 hermes session_id → runtime kind（turns 路由用）
+            state.runtime_registry.bind_session(sid, body.runtime_kind)
+            # provider_session_id 落到 metadata（仅内存返回；持久化更新待 store 扩 update_metadata）
+            if ref.provider_session_id:
+                merged = dict(record.metadata or {})
+                merged["provider_session_id"] = ref.provider_session_id
+                record.metadata = merged
+            # 标记 running（schema 允许的状态：created/running/waiting/completed/failed/cancelled/stopped）
+            await store.update_session_status(sid, "running")
+            record.status = "running"
+            logger.info(
+                "[sessions] runtime started kind=%s sid=%s provider_sid=%s",
+                body.runtime_kind, sid[:8],
+                (ref.provider_session_id or "")[:8],
+            )
+        except Exception:
+            logger.exception(
+                "[sessions] runtime.start_session failed kind=%s sid=%s; "
+                "DB session kept in 'created'",
+                body.runtime_kind, sid[:8],
+            )
 
     # Publish session.started event
     state.event_bus.publish(

@@ -358,20 +358,25 @@ class CodexAppServerRuntime(AgentRuntime):
 
         # 构造 SessionRef
         ref = SessionRef(
-            hermes_session_id="",  # 由调用方填入
+            hermes_session_id=input.hermes_session_id or "",
             provider_session_id=thread_id,
             provider="codex",
         )
 
-        # 缓存 session
+        # 缓存 session。
+        # ▶ 关键修复（Wave 8.3 bug）：以 hermes_session_id 为索引键（与 routes
+        #   层 + ClaudeAgentSdkRuntime 一致），fallback 到 thread_id 仅为兼容
+        #   不传 hermes_session_id 的旧调用方（如单元测试）。
+        index_key = input.hermes_session_id or thread_id
         with self._lock:
-            self._sessions[thread_id] = session
-            self._loops[thread_id] = asyncio.get_running_loop()
+            self._sessions[index_key] = session
+            self._loops[index_key] = asyncio.get_running_loop()
         # 回填 cell，供 approval_callback 跨线程使用
-        session_id_cell["id"] = thread_id
+        session_id_cell["id"] = index_key
 
         logger.info(
-            "CodexAppServerRuntime: session started, thread_id=%s cwd=%s",
+            "CodexAppServerRuntime: session started, hermes_sid=%s thread_id=%s cwd=%s",
+            index_key[:12],
             thread_id[:8],
             input.repo_path,
         )

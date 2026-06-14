@@ -113,6 +113,7 @@ async def create_session(
                 StartSessionInput(
                     repo_path=body.repo_path,
                     branch=body.base_branch,
+                    hermes_session_id=sid,
                 )
             )
             # 绑定 hermes session_id → runtime kind（turns 路由用）

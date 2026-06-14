@@ -55,6 +55,12 @@ class StartSessionInput:
     repo_path: str           # 工作区根目录（git repo 路径）
     branch: str              # 工作区分支名
     config: RuntimeConfig | None = None
+    # Hermes 侧已生成的 session ID。路由层（routes/sessions.py）在调
+    # start_session 前已经 new_session_id() 并写库，把它传进来让 runtime
+    # 用同一个 ID 作为内部 _sessions 字典的 key，避免 turn 路由查不到 session。
+    # 旧的 codex runtime 用 provider thread_id 作 key 是 Wave 8.3 遗留 bug，
+    # 修复后 codex/claude 都以 hermes_session_id 为统一索引键。
+    hermes_session_id: str | None = None
 
 
 @dataclass

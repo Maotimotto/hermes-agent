@@ -136,3 +136,8 @@ RELEASE_v*.md
 # Desktop demo-run scratch output (hermes writes demo/*.txt during recorded
 # walkthroughs). Throwaway artifacts, never part of the app.
 apps/desktop/demo/
+
+# Codex / OpenAI 密钥相关
+.hermes-codex-env.sh
+*codex_key*
+.codex/auth.json

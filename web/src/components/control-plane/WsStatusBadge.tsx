@@ -9,6 +9,7 @@
  *  - idle       → 灰色，未选 session
  */
 
+import { motion } from "motion/react";
 import type { WsStatus } from "@/pages/control-plane/types";
 
 type Variant = {
@@ -54,9 +55,22 @@ const VARIANTS: Record<WsStatus, Variant> = {
 export function WsStatusBadge({ status }: { status: WsStatus }) {
   const v = VARIANTS[status];
   return (
-    <span
+    <motion.span
+      key={status}
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={
+        status === "open"
+          ? { opacity: [0.7, 1, 0.7], scale: 1 }
+          : { opacity: 1, scale: 1 }
+      }
+      transition={
+        status === "open"
+          ? { opacity: { duration: 2, repeat: Infinity, ease: "easeInOut" }, scale: { duration: 0.2 } }
+          : { duration: 0.2 }
+      }
       title={v.tooltip}
       style={{
+        display: "inline-block",
         marginLeft: 10,
         fontSize: 11,
         padding: "1px 6px",
@@ -66,6 +80,6 @@ export function WsStatusBadge({ status }: { status: WsStatus }) {
       }}
     >
       {v.label}
-    </span>
+    </motion.span>
   );
 }

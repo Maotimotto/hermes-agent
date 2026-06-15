@@ -5,6 +5,7 @@
  * 空态根据上下文显示「未选 session」/「无事件」/「加载中」三种态。
  */
 
+import { motion } from "motion/react";
 import type { EventRecord } from "@/pages/control-plane/types";
 
 export type EventTimelineProps = {
@@ -26,8 +27,11 @@ export function EventTimeline({ events, hasSelection }: EventTimelineProps) {
   return (
     <>
       {events.map((ev) => (
-        <div
+        <motion.div
           key={ev.id}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
           style={{
             padding: "6px 8px",
             borderBottom: "1px solid #f3f4f6",
@@ -50,7 +54,7 @@ export function EventTimeline({ events, hasSelection }: EventTimelineProps) {
           >
             {JSON.stringify(ev.payload, null, 2)}
           </pre>
-        </div>
+        </motion.div>
       ))}
     </>
   );

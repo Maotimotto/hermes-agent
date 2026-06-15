@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import { motion } from "motion/react";
 import type { SessionRecord } from "@/pages/control-plane/types";
 import { STATUS_COLORS } from "@/pages/control-plane/types";
 
@@ -27,7 +28,12 @@ export function SessionCard({
   const bg = selected ? "#eff6ff" : hover ? "#f9fafb" : "white";
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 8 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
       onClick={() => onSelect(session.id)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -37,7 +43,6 @@ export function SessionCard({
         cursor: "pointer",
         background: bg,
         position: "relative",
-        transition: "background 120ms ease",
       }}
     >
       <div
@@ -101,6 +106,6 @@ export function SessionCard({
           ✕
         </button>
       )}
-    </div>
+    </motion.div>
   );
 }

@@ -4,6 +4,7 @@
  * decide 回调对应 useApprovals().decide(approvalId, decision)。
  */
 
+import { motion } from "motion/react";
 import type {
   ApprovalDecision,
   ApprovalRecord,
@@ -19,7 +20,12 @@ export type ApprovalCardProps = {
 
 export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -12 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
       style={{
         padding: 10,
         marginBottom: 8,
@@ -76,6 +82,6 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
           Deny
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -12,3 +12,4 @@ export type { ChatComposerProps } from "./ChatComposer";
 export { ApprovalCard } from "./ApprovalCard";
 export type { ApprovalCardProps } from "./ApprovalCard";
 export { WsStatusBadge } from "./WsStatusBadge";
+export { ErrorToast } from "./ErrorToast";

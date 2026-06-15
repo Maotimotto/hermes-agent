@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { fetchJSON } from "@/lib/api";
 import { useSessions, useEventStream, useApprovals } from "@/hooks/control-plane";
 import {
@@ -20,6 +21,7 @@ import {
   ChatComposer,
   ApprovalCard,
   WsStatusBadge,
+  ErrorToast,
 } from "@/components/control-plane";
 
 export default function ControlPlanePage() {
@@ -157,15 +159,17 @@ export default function ControlPlanePage() {
               {loading ? "Loading…" : "No sessions yet."}
             </div>
           )}
-          {sessions.map((s) => (
-            <SessionCard
-              key={s.id}
-              session={s}
-              selected={selectedSid === s.id}
-              onSelect={setSelectedSid}
-              onDelete={handleDelete}
-            />
-          ))}
+          <AnimatePresence initial={false}>
+            {sessions.map((s) => (
+              <SessionCard
+                key={s.id}
+                session={s}
+                selected={selectedSid === s.id}
+                onSelect={setSelectedSid}
+                onDelete={handleDelete}
+              />
+            ))}
+          </AnimatePresence>
         </div>
       </section>
 
@@ -240,31 +244,20 @@ export default function ControlPlanePage() {
               No pending approvals.
             </div>
           )}
-          {approvals.map((a) => (
-            <ApprovalCard key={a.id} approval={a} onDecide={decide} />
-          ))}
+          <AnimatePresence initial={false}>
+            {approvals.map((a) => (
+              <ApprovalCard key={a.id} approval={a} onDecide={decide} />
+            ))}
+          </AnimatePresence>
         </div>
       </section>
 
       {/* ── 全局错误 toast ──────────────────────── */}
-      {error && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 16,
-            right: 16,
-            background: "#fef2f2",
-            border: "1px solid #fca5a5",
-            color: "#991b1b",
-            padding: "8px 12px",
-            borderRadius: 6,
-            fontSize: 13,
-            maxWidth: 400,
-          }}
-        >
-          {error}
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <ErrorToast key="err" message={error} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

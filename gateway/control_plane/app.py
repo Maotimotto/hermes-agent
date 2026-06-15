@@ -21,7 +21,15 @@ from typing import Any
 from fastapi import FastAPI
 
 from gateway.control_plane.deps import AppState
-from gateway.control_plane.routes import approvals, events, health, sessions, turns
+from gateway.control_plane.error_middleware import install_error_handlers
+from gateway.control_plane.routes import (
+    approvals,
+    events,
+    health,
+    providers,
+    sessions,
+    turns,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +86,11 @@ def create_control_plane_app(
     app.include_router(turns.router)
     app.include_router(events.router)
     app.include_router(approvals.router)
+    app.include_router(providers.router)
     app.include_router(health.router)
+
+    # 统一错误信封 — 必须在 router 之后注册才能覆盖 FastAPI 默认 422 响应
+    install_error_handlers(app)
 
     return app
 

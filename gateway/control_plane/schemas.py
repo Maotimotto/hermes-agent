@@ -126,6 +126,26 @@ class ApprovalDecisionResponse(BaseModel):
     decided_at: str
 
 
+# ── Provider schemas ────────────────────────────────────────────────────────
+
+
+class ProviderInfo(BaseModel):
+    """单个 provider 描述（GET /providers 列表项 / GET /providers/{kind}）。"""
+
+    kind: str                                  # "codex" | "claude" | ...
+    available: bool                            # 健康检查结果
+    message: str = ""                          # 健康检查描述
+    version: str | None = None                 # provider 版本
+    latency_ms: int | None = None              # 探活延迟（ms）
+    active_sessions: int = 0                   # 绑定到该 runtime 的 session 数
+
+
+class ProviderListResponse(BaseModel):
+    """GET /providers 列表。"""
+
+    providers: list[ProviderInfo]
+
+
 # ── Health schema ───────────────────────────────────────────────────────────
 
 
@@ -136,3 +156,21 @@ class HealthResponse(BaseModel):
     store: dict[str, Any] = {}
     workspace: dict[str, Any] = {}
     runtime: dict[str, Any] = {}
+
+
+# ── Error envelope ──────────────────────────────────────────────────────────
+
+
+class ErrorBody(BaseModel):
+    """统一错误负载。"""
+
+    code: str                          # 机器可读：validation_error / not_found / ...
+    message: str                       # 人类可读
+    request_id: str | None = None      # 便于排查的相关 ID
+    details: Any | None = None         # 可选：FastAPI/Pydantic 校验细节等
+
+
+class ErrorResponse(BaseModel):
+    """统一错误信封：所有非 2xx 都返回这个 shape。"""
+
+    error: ErrorBody

@@ -3,14 +3,19 @@
  *
  * 三个面板：
  *  - 左：sessions 列表（GET /control-plane/sessions）
- *  - 中：选中 session 的事件流（GET /control-plane/sessions/:id/events）
+ *  - 中：选中 session 的事件流（GET /control-plane/sessions/:id/events，
+ *        实时更新走 WebSocket /control-plane/sessions/:id/events/ws）
  *  - 右：pending approvals + 决策按钮（GET /control-plane/approvals）
  *
- * 这一版只做读 + 决策；新建 session / 发 turn 留给 Wave 10.2 / 10.3。
+ * 实时层（2026-06-15 加）：
+ *  - 选中 session 后先 HTTP 拉一次历史事件做 backfill
+ *  - 然后开 WebSocket 订阅 server push（heartbeat 1Hz）
+ *  - 收到非 heartbeat 消息时增量 append（按 id dedupe）
+ *  - WS 断开 / 报错时降级到 3s polling，避免完全失联
  */
 
-import { useEffect, useState, useCallback } from "react";
-import { fetchJSON } from "@/lib/api";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { fetchJSON, HERMES_BASE_PATH } from "@/lib/api";
 
 type SessionRecord = {
   id: string;
@@ -85,6 +90,12 @@ export default function ControlPlanePage() {
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
 
+  // WS / fallback polling 状态
+  const [wsStatus, setWsStatus] = useState<
+    "idle" | "connecting" | "open" | "polling" | "closed"
+  >("idle");
+  const wsRef = useRef<WebSocket | null>(null);
+
   const refreshSessions = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -108,10 +119,26 @@ export default function ControlPlanePage() {
       const data = await fetchJSON<EventsResponse>(
         `/control-plane/sessions/${sid}/events?limit=200`,
       );
+      // 直接覆盖（HTTP 拉的是权威全量，WS 后续增量 append）
       setEvents(data.events);
     } catch (e) {
       setErr(`Failed to load events: ${(e as Error).message}`);
     }
+  }, []);
+
+  // 增量 append 单个 event（WS push 用）；按 id dedupe + 保持升序
+  const appendEvent = useCallback((evt: EventRecord) => {
+    setEvents((prev) => {
+      // dedupe by id
+      if (prev.some((e) => e.id === evt.id)) return prev;
+      // 大多数情况下 evt.id > 末尾.id，直接 push 即可
+      const last = prev[prev.length - 1];
+      if (!last || evt.id > last.id) return [...prev, evt];
+      // 否则按 id 排序插入（保护乱序投递场景）
+      const next = [...prev, evt];
+      next.sort((a, b) => a.id - b.id);
+      return next;
+    });
   }, []);
 
   const refreshApprovals = useCallback(async () => {
@@ -192,12 +219,89 @@ export default function ControlPlanePage() {
   }, [refreshSessions, refreshApprovals]);
 
   useEffect(() => {
-    if (selectedSid) {
-      refreshEvents(selectedSid);
-      const t = setInterval(() => refreshEvents(selectedSid), 3000);
-      return () => clearInterval(t);
+    if (!selectedSid) {
+      setWsStatus("idle");
+      return;
     }
-  }, [selectedSid, refreshEvents]);
+    const sid = selectedSid;
+
+    // 1) 先做一次 backfill（清空旧 session 的 events）
+    setEvents([]);
+    refreshEvents(sid);
+
+    // 2) 开 WebSocket 实时订阅
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let ws: WebSocket | null = null;
+
+    const startPollingFallback = () => {
+      if (cancelled || pollTimer) return;
+      setWsStatus("polling");
+      pollTimer = setInterval(() => {
+        if (cancelled) return;
+        refreshEvents(sid);
+      }, 3000);
+    };
+
+    try {
+      // ws://host[/base-path]/control-plane/sessions/<sid>/events/ws
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const base = HERMES_BASE_PATH || "";
+      const url = `${proto}//${window.location.host}${base}/control-plane/sessions/${sid}/events/ws`;
+      setWsStatus("connecting");
+      ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        setWsStatus("open");
+      };
+
+      ws.onmessage = (msg: MessageEvent<string>) => {
+        if (cancelled) return;
+        try {
+          const data = JSON.parse(msg.data) as
+            | { type: "heartbeat" }
+            | EventRecord;
+          if ((data as { type?: string }).type === "heartbeat") return;
+          appendEvent(data as EventRecord);
+        } catch {
+          // 损坏帧忽略
+        }
+      };
+
+      ws.onerror = () => {
+        if (cancelled) return;
+        // 不立即降级，等 onclose 统一处理
+      };
+
+      ws.onclose = () => {
+        if (cancelled) return;
+        setWsStatus("closed");
+        // WS 断了：起 polling 兜底，避免界面停滞
+        startPollingFallback();
+      };
+    } catch {
+      // 浏览器不支持 / URL 构造失败 → 直接走 polling
+      startPollingFallback();
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (ws) {
+        try {
+          ws.close();
+        } catch {
+          // 忽略关闭异常
+        }
+        wsRef.current = null;
+      }
+    };
+  }, [selectedSid, refreshEvents, appendEvent]);
 
   const decideApproval = async (
     approvalId: string,
@@ -483,6 +587,53 @@ export default function ControlPlanePage() {
           {selectedSid && (
             <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 12, color: "#6b7280" }}>
               {selectedSid}
+            </span>
+          )}
+          {selectedSid && (
+            <span
+              title={
+                wsStatus === "open"
+                  ? "WebSocket 实时推送中"
+                  : wsStatus === "polling"
+                    ? "WS 不可用，已降级到 3s 轮询"
+                    : wsStatus === "connecting"
+                      ? "正在建立 WebSocket 连接"
+                      : wsStatus === "closed"
+                        ? "WebSocket 已关闭"
+                        : "未连接"
+              }
+              style={{
+                marginLeft: 10,
+                fontSize: 11,
+                padding: "1px 6px",
+                borderRadius: 999,
+                background:
+                  wsStatus === "open"
+                    ? "#10b98120"
+                    : wsStatus === "polling"
+                      ? "#f59e0b20"
+                      : wsStatus === "connecting"
+                        ? "#3b82f620"
+                        : "#9ca3af20",
+                color:
+                  wsStatus === "open"
+                    ? "#10b981"
+                    : wsStatus === "polling"
+                      ? "#f59e0b"
+                      : wsStatus === "connecting"
+                        ? "#3b82f6"
+                        : "#6b7280",
+              }}
+            >
+              {wsStatus === "open"
+                ? "● live"
+                : wsStatus === "polling"
+                  ? "◐ poll 3s"
+                  : wsStatus === "connecting"
+                    ? "○ connecting"
+                    : wsStatus === "closed"
+                      ? "× closed"
+                      : "idle"}
             </span>
           )}
         </header>

@@ -288,6 +288,10 @@ from hermes_cli.subcommands.version import build_version_parser
 from hermes_cli.subcommands.update import build_update_parser
 from hermes_cli.subcommands.uninstall import build_uninstall_parser
 from hermes_cli.subcommands.dashboard import build_dashboard_parser
+from hermes_cli.subcommands.control_plane import (
+    build_control_plane_parser,
+    cmd_control_plane as _cmd_control_plane,
+)
 from hermes_cli.subcommands.gui import build_gui_parser
 from hermes_cli.subcommands.logs import build_logs_parser
 from hermes_cli.subcommands.prompt_size import build_prompt_size_parser
@@ -12056,6 +12060,15 @@ def main():
         subparsers,
         cmd_dashboard=cmd_dashboard,
         cmd_dashboard_register=cmd_dashboard_register,
+    )
+
+    # =========================================================================
+    # control-plane command  (parser built in hermes_cli/subcommands/control_plane.py)
+    # V1.0.0 standalone daemon for Codex App Server + Claude Agent SDK runtimes.
+    # =========================================================================
+    build_control_plane_parser(
+        subparsers,
+        cmd_control_plane=_cmd_control_plane,
     )
 
 

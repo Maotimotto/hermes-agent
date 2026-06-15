@@ -235,6 +235,17 @@ youtube = [
 # starlette==1.0.1 pinned for CVE-2026-48710 (BadHost) — fastapi pulls Starlette
 # transitively and pre-1.0.1 is the vulnerable range. See the mcp extra above.
 web = ["fastapi==0.133.1", "uvicorn[standard]==0.41.0", "starlette==1.0.1"]
+# Hermes Control Plane (V1.0.0) — Codex App Server + Claude Agent SDK
+# runtimes, session/event/approval store, daemon HTTP/WS API. Opt-in
+# because claude-agent-sdk pulls trio/anyio that not every install needs.
+# Pins reflect the versions the 349-test suite is green against
+# (2026-06-15). Bump in lockstep with tests/control_plane/.
+control-plane = [
+  "hermes-agent[web]",
+  "claude-agent-sdk==0.2.101",
+  "aiosqlite==0.19.0",
+  "asyncmy==0.2.11",
+]
 all = [
   # Policy (2026-05-12): `[all]` includes only extras that genuinely
   # CAN'T be lazy-installed via `tools/lazy_deps.py` — i.e. things every

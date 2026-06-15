@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from agent.control_plane.ids import new_turn_id
 from agent.control_plane.runtimes.interface import TurnInput
-from agent.control_plane.store import EventRecord, SessionStore
+from agent.control_plane.store import SessionStore
 from gateway.control_plane.deps import (
     AppState,
     EventBus,
@@ -80,21 +80,9 @@ async def create_turn(
     # Insert turn record for FK constraint
     await _insert_turn_record(store, tid, session_id, body.prompt)
 
-    # Record turn.started event
-    await store.append_event(
-        EventRecord(
-            session_id=session_id,
-            turn_id=tid,
-            type="turn.started",
-            payload={"prompt": body.prompt},
-        )
-    )
-
-    # Publish to event bus
-    state.event_bus.publish(
-        session_id,
-        {"type": "turn.started", "session_id": session_id, "turn_id": tid},
-    )
+    # NB: runtime's start_turn yields TurnStartedEvent itself; routes shouldn't
+    # double-publish. If no runtime is registered we publish a synthetic one
+    # below.
 
     # Determine runtime kind
     kind = state.runtime_registry.get_session_runtime(session_id) or rec.runtime_kind
@@ -109,63 +97,62 @@ async def create_turn(
             metadata=body.metadata,
         )
 
+        TERMINAL = {"turn.completed", "turn.failed", "turn.cancelled"}
+
         async def _run_turn() -> None:
+            saw_terminal = False
             try:
                 async for event in runtime.start_turn(session_id, turn_input):
                     event_dict = event.model_dump(mode="json")
+                    # Force IDs to control-plane values (runtime may have
+                    # stashed provider-specific ids that don't match our
+                    # turns.id FK).
+                    event_dict["session_id"] = session_id
+                    event_dict["turn_id"] = tid
+                    if event.type in TERMINAL:
+                        saw_terminal = True
                     state.event_bus.publish(session_id, event_dict)
-                    await store.append_event(
-                        EventRecord(
-                            session_id=session_id,
-                            turn_id=tid,
-                            type=event.type,
-                            payload=event_dict,
-                        )
-                    )
             except asyncio.CancelledError:
-                state.event_bus.publish(
-                    session_id,
-                    {
-                        "type": "turn.cancelled",
-                        "session_id": session_id,
-                        "turn_id": tid,
-                    },
-                )
-                await store.append_event(
-                    EventRecord(
-                        session_id=session_id,
-                        turn_id=tid,
-                        type="turn.cancelled",
-                        payload={"reason": "cancelled"},
+                if not saw_terminal:
+                    state.event_bus.publish(
+                        session_id,
+                        {
+                            "type": "turn.cancelled",
+                            "session_id": session_id,
+                            "turn_id": tid,
+                            "reason": "cancelled",
+                        },
                     )
-                )
             except Exception as exc:
                 logger.exception("turn %s failed", tid)
-                state.event_bus.publish(
-                    session_id,
-                    {
-                        "type": "turn.failed",
-                        "session_id": session_id,
-                        "turn_id": tid,
-                        "error": str(exc),
-                    },
-                )
-                await store.append_event(
-                    EventRecord(
-                        session_id=session_id,
-                        turn_id=tid,
-                        type="turn.failed",
-                        payload={"error": str(exc)},
+                if not saw_terminal:
+                    state.event_bus.publish(
+                        session_id,
+                        {
+                            "type": "turn.failed",
+                            "session_id": session_id,
+                            "turn_id": tid,
+                            "error": str(exc),
+                        },
                     )
-                )
             finally:
                 state.runtime_registry.remove_turn(tid)
 
         task = asyncio.create_task(_run_turn())
         state.runtime_registry.register_turn(tid, session_id, task)
     else:
-        # No runtime registered — log a warning but still accept the turn
+        # No runtime registered — emit synthetic turn.started so the WS
+        # client can still see the turn lifecycle.
         logger.warning("No runtime registered for kind=%s; turn accepted but not executed", kind)
+        state.event_bus.publish(
+            session_id,
+            {
+                "type": "turn.started",
+                "session_id": session_id,
+                "turn_id": tid,
+                "prompt": body.prompt,
+            },
+        )
 
     return TurnResponse(turn_id=tid, session_id=session_id, status="started")
 
@@ -210,18 +197,15 @@ async def interrupt_turn(
     if not task.done():
         task.cancel()
 
-    # Record event
-    await store.append_event(
-        EventRecord(
-            session_id=session_id,
-            turn_id=turn_id,
-            type="turn.cancelled",
-            payload={"reason": "user_interrupt"},
-        )
-    )
+    # Publish — EventBus persistence hook will persist it.
     state.event_bus.publish(
         session_id,
-        {"type": "turn.cancelled", "session_id": session_id, "turn_id": turn_id},
+        {
+            "type": "turn.cancelled",
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "reason": "user_interrupt",
+        },
     )
 
     return TurnInterruptResponse(turn_id=turn_id, status="interrupted")

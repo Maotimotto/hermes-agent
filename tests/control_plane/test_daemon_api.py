@@ -86,11 +86,18 @@ class MockRuntime(AgentRuntime):
         )
 
         self.started_turns.append((session_id, input))
+        # NB: real runtimes await on I/O between events, which yields control
+        # back to the event loop and lets concurrent DELETE handlers see the
+        # turn as still-running. The mock has to mimic that or interrupt
+        # tests will lose the race (task removes itself from the registry
+        # before the cancel arrives).
+        await asyncio.sleep(0.05)
         yield AssistantDeltaEvent(
             session_id=session_id,
             turn_id="mock_turn",
             text="Hello from mock runtime",
         )
+        await asyncio.sleep(0.05)
         yield TurnCompletedEvent(
             session_id=session_id,
             turn_id="mock_turn",

@@ -37,10 +37,9 @@ async def health_check(
     """Return health status for store, workspace, and runtime subsystems."""
     store_status: dict[str, Any] = {"status": "ok"}
     try:
-        # Lightweight DB probe
-        cursor = await store.db.execute("SELECT count(*) FROM sessions")
-        row = await cursor.fetchone()
-        store_status["session_count"] = row[0] if row else 0
+        # Lightweight DB probe — driver-agnostic.
+        row = await store.driver.fetchone("SELECT count(*) AS n FROM sessions")
+        store_status["session_count"] = (row or {}).get("n", 0)
     except Exception as exc:
         store_status = {"status": "error", "detail": str(exc)}
 

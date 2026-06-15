@@ -68,10 +68,10 @@ async def list_approvals(
     # list_approvals_by_session.  For now we iterate all known sessions.
     # A future optimization adds a cross-session list to the store layer.
     # For this MVP we do a simple scan across all approvals in the DB.
-    cursor = await store.db.execute(
-        "SELECT * FROM approvals ORDER BY rowid DESC LIMIT 500"
+    rows = await store.driver.fetchall(
+        "SELECT * FROM approvals "
+        "ORDER BY COALESCE(decided_at, '~') DESC, id DESC LIMIT 500"
     )
-    rows = await cursor.fetchall()
     approvals = []
     for row in rows:
         import json

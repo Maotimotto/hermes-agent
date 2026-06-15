@@ -1,37 +1,35 @@
 """
-SQLite connection management for the Session Store.
+Backwards-compat shim — opens a connection via the driver factory.
 
-Provides async aiosqlite connections with WAL mode, foreign keys,
-and busy_timeout. Also houses the migration runner.
+Older callers do `from .db import create_database` and pass an `aiosqlite.Connection`
+into the CRUD modules. New callers should use `create_driver()` directly via
+`SessionStore`. We keep this module thin and forward to driver.py.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
-from typing import Optional
 
-import aiosqlite
+from .driver import (
+    DEFAULT_DB_PATH,
+    create_driver,
+    StoreDriver,
+)
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_DB_PATH = Path.home() / ".hermes" / "control_plane.db"
 
 
 async def create_database(
     db_path: str | Path | None = None,
-) -> aiosqlite.Connection:
-    """Create and configure an async SQLite connection.
+) -> StoreDriver:
+    """Open a store driver. URL scheme picks SQLite vs MySQL.
 
-    Sets WAL journal mode, foreign_keys=ON, busy_timeout=5000.
+    Honors `HERMES_CP_DB_URL` env var when no explicit value is passed. Returns
+    a `StoreDriver` (sqlite or mysql) — callers should treat it via the driver
+    interface, not as an aiosqlite connection.
     """
-    path = Path(db_path) if db_path else DEFAULT_DB_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    db = await aiosqlite.connect(str(path))
-    await db.execute("PRAGMA journal_mode = WAL")
-    await db.execute("PRAGMA foreign_keys = ON")
-    await db.execute("PRAGMA busy_timeout = 5000")
-    # Return rows as dict-like Row objects
-    db.row_factory = aiosqlite.Row
-    return db
+    if db_path is None:
+        db_path = os.environ.get("HERMES_CP_DB_URL")
+    return await create_driver(db_path)

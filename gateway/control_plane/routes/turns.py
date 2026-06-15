@@ -40,12 +40,12 @@ router = APIRouter(tags=["turns"])
 async def _insert_turn_record(store: SessionStore, turn_id: str, session_id: str, prompt: str) -> None:
     """Insert a row into the turns table so FK constraints on events.turn_id are satisfied."""
     now = datetime.now(timezone.utc).isoformat()
-    await store.db.execute(
+    await store.driver.execute(
         """INSERT INTO turns (id, session_id, prompt, status, started_at)
            VALUES (?, ?, ?, 'running', ?)""",
         (turn_id, session_id, prompt, now),
     )
-    await store.db.commit()
+    await store.driver.commit()
 
 
 # ── POST /sessions/{session_id}/turns ────────────────────────────────────────

@@ -1,24 +1,20 @@
 """
 Event write/query operations against the events table.
 
-Supports single append, batch append (single transaction), and
-paginated queries with optional type filtering.
+All access via StoreDriver — backend-agnostic.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
-import aiosqlite
+from .driver import StoreDriver
 
 logger = logging.getLogger(__name__)
 
-
-# ── Minimal event data (stand-in until hermes_event.py lands) ────────────────
 
 @dataclass
 class EventRecord:
@@ -28,7 +24,6 @@ class EventRecord:
     payload: dict
     turn_id: str | None = None
     created_at: str = ""
-    # Optional numeric id — auto-assigned by DB for new records
     id: int | None = None
 
     def __post_init__(self):
@@ -36,30 +31,25 @@ class EventRecord:
             self.created_at = datetime.now(timezone.utc).isoformat()
 
 
-def _row_to_event(row: aiosqlite.Row) -> EventRecord:
-    """Convert a DB row to EventRecord."""
-    d = dict(row)
-    payload = d.get("payload")
+def _row_to_event(row: dict) -> EventRecord:
+    payload = row.get("payload")
     if isinstance(payload, str):
         try:
             payload = json.loads(payload)
         except (json.JSONDecodeError, TypeError):
             payload = {}
     return EventRecord(
-        id=d.get("id"),
-        session_id=d["session_id"],
-        turn_id=d.get("turn_id"),
-        type=d["type"],
+        id=row.get("id"),
+        session_id=row["session_id"],
+        turn_id=row.get("turn_id"),
+        type=row["type"],
         payload=payload,
-        created_at=d.get("created_at", ""),
+        created_at=row.get("created_at", ""),
     )
 
 
-# ── Write operations ─────────────────────────────────────────────────────────
-
-async def append_event(db: aiosqlite.Connection, event: EventRecord) -> None:
-    """Write a single event to the events table."""
-    await db.execute(
+async def append_event(driver: StoreDriver, event: EventRecord) -> None:
+    await driver.execute(
         """
         INSERT INTO events (session_id, turn_id, type, payload, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -72,16 +62,15 @@ async def append_event(db: aiosqlite.Connection, event: EventRecord) -> None:
             event.created_at,
         ),
     )
-    await db.commit()
+    await driver.commit()
 
 
 async def append_events_batch(
-    db: aiosqlite.Connection, events: list[EventRecord]
+    driver: StoreDriver, events: list[EventRecord]
 ) -> None:
-    """Batch-write events in a single transaction for performance."""
     if not events:
         return
-    await db.executemany(
+    await driver.executemany(
         """
         INSERT INTO events (session_id, turn_id, type, payload, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -97,32 +86,17 @@ async def append_events_batch(
             for e in events
         ],
     )
-    await db.commit()
+    await driver.commit()
 
-
-# ── Query operations ─────────────────────────────────────────────────────────
 
 async def list_events(
-    db: aiosqlite.Connection,
+    driver: StoreDriver,
     session_id: str,
     *,
     since_id: int | None = None,
     types: list[str] | None = None,
     limit: int = 100,
 ) -> list[EventRecord]:
-    """Query events for a session with optional filters.
-
-    Parameters
-    ----------
-    session_id : str
-        The session to query events for.
-    since_id : int | None
-        If set, only return events with id > since_id (for incremental polling).
-    types : list[str] | None
-        If set, filter to these event types only.
-    limit : int
-        Max rows to return (default 100).
-    """
     conditions = ["session_id = ?"]
     params: list = [session_id]
 
@@ -138,9 +112,8 @@ async def list_events(
     params.append(limit)
     where = " AND ".join(conditions)
 
-    cursor = await db.execute(
+    rows = await driver.fetchall(
         f"SELECT * FROM events WHERE {where} ORDER BY id ASC LIMIT ?",
         params,
     )
-    rows = await cursor.fetchall()
     return [_row_to_event(r) for r in rows]

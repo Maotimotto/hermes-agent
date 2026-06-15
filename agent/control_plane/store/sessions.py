@@ -1,23 +1,20 @@
 """
 Session CRUD operations against the sessions table.
 
-Depends on db.py for connection management.
+Calls go through the StoreDriver — backend-agnostic (SQLite/MySQL).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
-import aiosqlite
+from .driver import StoreDriver
 
 logger = logging.getLogger(__name__)
 
-
-# ── Minimal data types (stand-in until hermes_event.py lands) ────────────────
 
 @dataclass
 class SessionRecord:
@@ -37,33 +34,29 @@ class SessionRecord:
             self.started_at = datetime.now(timezone.utc).isoformat()
 
 
-def _row_to_session(row: aiosqlite.Row) -> SessionRecord:
-    """Convert a DB row to SessionRecord."""
-    d = dict(row)
-    meta = d.get("metadata")
+def _row_to_session(row: dict) -> SessionRecord:
+    """Convert a DB row (dict) to SessionRecord."""
+    meta = row.get("metadata")
     if isinstance(meta, str):
         try:
             meta = json.loads(meta)
         except (json.JSONDecodeError, TypeError):
             meta = None
     return SessionRecord(
-        id=d["id"],
-        runtime_kind=d.get("runtime_kind", "claude"),
-        model=d.get("model"),
-        repo_path=d.get("repo_path"),
-        workspace_id=d.get("workspace_id"),
-        status=d.get("status", "created"),
-        started_at=d.get("started_at", ""),
-        ended_at=d.get("ended_at"),
+        id=row["id"],
+        runtime_kind=row.get("runtime_kind", "claude"),
+        model=row.get("model"),
+        repo_path=row.get("repo_path"),
+        workspace_id=row.get("workspace_id"),
+        status=row.get("status", "created"),
+        started_at=row.get("started_at", ""),
+        ended_at=row.get("ended_at"),
         metadata=meta,
     )
 
 
-# ── CRUD functions ───────────────────────────────────────────────────────────
-
-async def create_session(db: aiosqlite.Connection, session: SessionRecord) -> None:
-    """Insert a new session record."""
-    await db.execute(
+async def create_session(driver: StoreDriver, session: SessionRecord) -> None:
+    await driver.execute(
         """
         INSERT INTO sessions (id, runtime_kind, model, repo_path, workspace_id,
                               status, started_at, ended_at, metadata)
@@ -81,55 +74,50 @@ async def create_session(db: aiosqlite.Connection, session: SessionRecord) -> No
             json.dumps(session.metadata) if session.metadata else None,
         ),
     )
-    await db.commit()
+    await driver.commit()
 
 
 async def get_session(
-    db: aiosqlite.Connection, session_id: str
+    driver: StoreDriver, session_id: str
 ) -> SessionRecord | None:
-    """Fetch a session by ID, or None if not found."""
-    cursor = await db.execute(
+    row = await driver.fetchone(
         "SELECT * FROM sessions WHERE id = ?", (session_id,)
     )
-    row = await cursor.fetchone()
-    if row is None:
-        return None
-    return _row_to_session(row)
+    return _row_to_session(row) if row else None
 
 
 async def list_sessions(
-    db: aiosqlite.Connection,
+    driver: StoreDriver,
     *,
     status: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[SessionRecord]:
-    """List sessions with optional status filter and pagination."""
     if status:
-        cursor = await db.execute(
-            "SELECT * FROM sessions WHERE status = ? ORDER BY started_at DESC LIMIT ? OFFSET ?",
+        rows = await driver.fetchall(
+            "SELECT * FROM sessions WHERE status = ? "
+            "ORDER BY started_at DESC LIMIT ? OFFSET ?",
             (status, limit, offset),
         )
     else:
-        cursor = await db.execute(
+        rows = await driver.fetchall(
             "SELECT * FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
         )
-    rows = await cursor.fetchall()
     return [_row_to_session(r) for r in rows]
 
 
 async def update_session_status(
-    db: aiosqlite.Connection,
+    driver: StoreDriver,
     session_id: str,
     status: str,
     ended_at: str | None = None,
 ) -> None:
-    """Update session status (and optionally ended_at)."""
     if ended_at is None and status in ("completed", "failed", "cancelled", "stopped"):
         ended_at = datetime.now(timezone.utc).isoformat()
-    await db.execute(
-        "UPDATE sessions SET status = ?, ended_at = COALESCE(?, ended_at) WHERE id = ?",
+    await driver.execute(
+        "UPDATE sessions SET status = ?, "
+        "ended_at = COALESCE(?, ended_at) WHERE id = ?",
         (status, ended_at, session_id),
     )
-    await db.commit()
+    await driver.commit()

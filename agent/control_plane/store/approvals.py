@@ -1,24 +1,20 @@
 """
-Approval record write/query operations against the approvals table.
+Approval record write/query operations.
 
-Supports recording approval requests, decisions, and looking up
-remembered decisions (for ttl-based auto-approval).
+All DB access via StoreDriver — backend-agnostic.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
-import aiosqlite
+from .driver import StoreDriver
 
 logger = logging.getLogger(__name__)
 
-
-# ── Minimal approval data (stand-in until approval types land) ───────────────
 
 @dataclass
 class ApprovalRecord:
@@ -35,36 +31,31 @@ class ApprovalRecord:
     ttl_until: str | None = None
 
 
-def _row_to_approval(row: aiosqlite.Row) -> ApprovalRecord:
-    """Convert a DB row to ApprovalRecord."""
-    d = dict(row)
-    payload = d.get("action_payload")
+def _row_to_approval(row: dict) -> ApprovalRecord:
+    payload = row.get("action_payload")
     if isinstance(payload, str):
         try:
             payload = json.loads(payload)
         except (json.JSONDecodeError, TypeError):
             payload = None
     return ApprovalRecord(
-        id=d["id"],
-        session_id=d["session_id"],
-        turn_id=d.get("turn_id"),
-        action_kind=d["action_kind"],
+        id=row["id"],
+        session_id=row["session_id"],
+        turn_id=row.get("turn_id"),
+        action_kind=row["action_kind"],
         action_payload=payload,
-        risk=d.get("risk"),
-        decision=d.get("decision"),
-        decided_at=d.get("decided_at"),
-        decided_by=d.get("decided_by"),
-        ttl_until=d.get("ttl_until"),
+        risk=row.get("risk"),
+        decision=row.get("decision"),
+        decided_at=row.get("decided_at"),
+        decided_by=row.get("decided_by"),
+        ttl_until=row.get("ttl_until"),
     )
 
 
-# ── Write operations ─────────────────────────────────────────────────────────
-
 async def record_request(
-    db: aiosqlite.Connection, approval: ApprovalRecord
+    driver: StoreDriver, approval: ApprovalRecord
 ) -> None:
-    """Insert a new approval request (decision defaults to 'pending')."""
-    await db.execute(
+    await driver.execute(
         """
         INSERT INTO approvals (id, session_id, turn_id, action_kind,
                                action_payload, risk, decision,
@@ -84,20 +75,19 @@ async def record_request(
             approval.ttl_until,
         ),
     )
-    await db.commit()
+    await driver.commit()
 
 
 async def record_decision(
-    db: aiosqlite.Connection,
+    driver: StoreDriver,
     approval_id: str,
     decision: str,
     *,
     decided_by: str | None = None,
     ttl_until: str | None = None,
 ) -> None:
-    """Update an approval with a decision."""
     now = datetime.now(timezone.utc).isoformat()
-    await db.execute(
+    await driver.execute(
         """
         UPDATE approvals
         SET decision = ?, decided_at = ?, decided_by = ?, ttl_until = ?
@@ -105,31 +95,17 @@ async def record_decision(
         """,
         (decision, now, decided_by, ttl_until, approval_id),
     )
-    await db.commit()
+    await driver.commit()
 
 
 async def find_remembered_decision(
-    db: aiosqlite.Connection,
+    driver: StoreDriver,
     action_kind: str,
     fingerprint: str | None = None,
 ) -> ApprovalRecord | None:
-    """Find a previously-approved action whose ttl_until is still in the future.
-
-    This enables "remember this decision" semantics — if the user approved
-    an action and set a TTL, subsequent identical actions within that window
-    are auto-approved.
-
-    Parameters
-    ----------
-    action_kind : str
-        The kind of action (e.g. "shell.command", "file.edit").
-    fingerprint : str | None
-        Optional fingerprint to match against action_payload.
-        Used to distinguish between different commands of the same kind.
-    """
     now = datetime.now(timezone.utc).isoformat()
     if fingerprint:
-        cursor = await db.execute(
+        row = await driver.fetchone(
             """
             SELECT * FROM approvals
             WHERE action_kind = ?
@@ -143,7 +119,7 @@ async def find_remembered_decision(
             (action_kind, now, f"%{fingerprint}%"),
         )
     else:
-        cursor = await db.execute(
+        row = await driver.fetchone(
             """
             SELECT * FROM approvals
             WHERE action_kind = ?
@@ -155,32 +131,27 @@ async def find_remembered_decision(
             """,
             (action_kind, now),
         )
-    row = await cursor.fetchone()
-    if row is None:
-        return None
-    return _row_to_approval(row)
+    return _row_to_approval(row) if row else None
 
 
 async def get_approval(
-    db: aiosqlite.Connection, approval_id: str
+    driver: StoreDriver, approval_id: str
 ) -> ApprovalRecord | None:
-    """Fetch a single approval by ID."""
-    cursor = await db.execute(
+    row = await driver.fetchone(
         "SELECT * FROM approvals WHERE id = ?", (approval_id,)
     )
-    row = await cursor.fetchone()
-    if row is None:
-        return None
-    return _row_to_approval(row)
+    return _row_to_approval(row) if row else None
 
 
 async def list_approvals_by_session(
-    db: aiosqlite.Connection, session_id: str
+    driver: StoreDriver, session_id: str
 ) -> list[ApprovalRecord]:
-    """List all approvals for a session."""
-    cursor = await db.execute(
-        "SELECT * FROM approvals WHERE session_id = ? ORDER BY rowid",
+    # SQLite has implicit `rowid`; MySQL doesn't. Order by decided_at falls
+    # back to NULL-last on pending, and id (TEXT) gives stable insertion order
+    # when both sides assign UUIDs sequentially.
+    rows = await driver.fetchall(
+        "SELECT * FROM approvals WHERE session_id = ? "
+        "ORDER BY COALESCE(decided_at, '~') ASC, id ASC",
         (session_id,),
     )
-    rows = await cursor.fetchall()
     return [_row_to_approval(r) for r in rows]

@@ -1,6 +1,10 @@
 /**
  * ApprovalCard — 待审批操作的单卡片，提供 Allow/Deny 决策按钮。
  *
+ * Wave 1 升级：风险等级用 RiskBadge 渲染（来自后端 risk 字段，
+ * 见 agent/control_plane/approval/types.py::RiskLevel）；critical
+ * 风险 deny 按钮拿到主色，高亮警示。
+ *
  * decide 回调对应 useApprovals().decide(approvalId, decision)。
  */
 
@@ -9,6 +13,7 @@ import type {
   ApprovalDecision,
   ApprovalRecord,
 } from "@/pages/control-plane/types";
+import { RiskBadge } from "./RiskBadge";
 
 export type ApprovalCardProps = {
   approval: ApprovalRecord;
@@ -19,6 +24,14 @@ export type ApprovalCardProps = {
 };
 
 export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
+  const risk = (approval as ApprovalRecord & { risk?: string | null }).risk;
+  const critical = (risk || "").toLowerCase() === "critical";
+
+  // critical 时整体 tone 偏红，否则保持 amber 提示
+  const tone = critical
+    ? { border: "#fca5a5", bg: "#fee2e2", title: "#991b1b" }
+    : { border: "#fbbf24", bg: "#fef3c7", title: "#92400e" };
+
   return (
     <motion.div
       layout
@@ -29,13 +42,23 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
       style={{
         padding: 10,
         marginBottom: 8,
-        border: "1px solid #fbbf24",
-        background: "#fef3c7",
+        border: `1px solid ${tone.border}`,
+        background: tone.bg,
         borderRadius: 6,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e" }}>
-        {approval.action_kind}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <RiskBadge risk={risk} compact />
+        <span style={{ fontSize: 12, fontWeight: 600, color: tone.title }}>
+          {approval.action_kind}
+        </span>
       </div>
       <pre
         style={{
@@ -46,6 +69,7 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
           wordBreak: "break-word",
           maxHeight: 100,
           overflow: "auto",
+          fontFamily: "var(--theme-font-mono, monospace)",
         }}
       >
         {JSON.stringify(approval.action_payload, null, 2)}
@@ -58,10 +82,11 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
             padding: "6px 12px",
             border: "none",
             borderRadius: 4,
-            background: "#10b981",
-            color: "white",
+            background: critical ? "#a7f3d0" : "#10b981",
+            color: critical ? "#065f46" : "white",
             cursor: "pointer",
             fontSize: 12,
+            fontWeight: 600,
           }}
         >
           Allow
@@ -77,6 +102,8 @@ export function ApprovalCard({ approval, onDecide }: ApprovalCardProps) {
             color: "white",
             cursor: "pointer",
             fontSize: 12,
+            fontWeight: 600,
+            boxShadow: critical ? "0 0 0 2px rgba(239,68,68,0.35)" : "none",
           }}
         >
           Deny

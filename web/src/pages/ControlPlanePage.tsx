@@ -22,6 +22,7 @@ import {
   ApprovalCard,
   WsStatusBadge,
   ErrorToast,
+  FileChangePanel,
 } from "@/components/control-plane";
 
 export default function ControlPlanePage() {
@@ -209,6 +210,7 @@ export default function ControlPlanePage() {
             fontSize: 12,
           }}
         >
+          {selectedSid && <FileChangePanel events={events} />}
           <EventTimeline events={events} hasSelection={!!selectedSid} />
         </div>
 

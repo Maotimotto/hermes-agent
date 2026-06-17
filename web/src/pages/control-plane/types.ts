@@ -54,6 +54,8 @@ export type ApprovalRecord = {
   session_id: string;
   action_kind: string;
   action_payload: Record<string, unknown>;
+  /** Risk level set by ApprovalGate policies (low / medium / high / critical). */
+  risk?: string | null;
   decision: ApprovalDecision;
   decided_by?: string | null;
   decided_at?: string | null;
@@ -74,3 +76,4 @@ export const STATUS_COLORS: Record<string, string> = {
   cancelled: "#9ca3af",
   stopped: "#9ca3af",
 };
+

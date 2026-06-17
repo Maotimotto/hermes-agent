@@ -13,3 +13,14 @@ export { ApprovalCard } from "./ApprovalCard";
 export type { ApprovalCardProps } from "./ApprovalCard";
 export { WsStatusBadge } from "./WsStatusBadge";
 export { ErrorToast } from "./ErrorToast";
+export { LifecycleMarker } from "./LifecycleMarker";
+export type { LifecycleMarkerProps } from "./LifecycleMarker";
+export { AssistantBubble } from "./AssistantBubble";
+export type { AssistantBubbleProps } from "./AssistantBubble";
+export { ToolCallCard } from "./ToolCallCard";
+export type { ToolCallCardProps, ToolGroup, ToolStatus } from "./ToolCallCard";
+export { RiskBadge } from "./RiskBadge";
+export type { RiskBadgeProps, RiskLevel } from "./RiskBadge";
+export { FileChangePanel } from "./FileChangePanel";
+export type { FileChangePanelProps } from "./FileChangePanel";
+

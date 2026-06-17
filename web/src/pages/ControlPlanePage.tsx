@@ -23,6 +23,7 @@ import {
   WsStatusBadge,
   ErrorToast,
   FileChangePanel,
+  ControlPlaneTopBar,
 } from "@/components/control-plane";
 
 export default function ControlPlanePage() {
@@ -83,14 +84,24 @@ export default function ControlPlanePage() {
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "320px 1fr 360px",
-        gap: 12,
+        display: "flex",
+        flexDirection: "column",
         height: "calc(100vh - 60px)",
-        padding: 12,
         boxSizing: "border-box",
       }}
     >
+      <ControlPlaneTopBar />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "320px 1fr 360px",
+          gap: 12,
+          flex: 1,
+          minHeight: 0,
+          padding: 12,
+          boxSizing: "border-box",
+        }}
+      >
       {/* ── 左：sessions ───────────────────────── */}
       <section
         style={{
@@ -253,6 +264,7 @@ export default function ControlPlanePage() {
           </AnimatePresence>
         </div>
       </section>
+      </div>
 
       {/* ── 全局错误 toast ──────────────────────── */}
       <AnimatePresence>

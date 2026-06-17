@@ -23,4 +23,6 @@ export { RiskBadge } from "./RiskBadge";
 export type { RiskBadgeProps, RiskLevel } from "./RiskBadge";
 export { FileChangePanel } from "./FileChangePanel";
 export type { FileChangePanelProps } from "./FileChangePanel";
+export { ControlPlaneTopBar } from "./ControlPlaneTopBar";
+export type { ControlPlaneTopBarProps } from "./ControlPlaneTopBar";
 

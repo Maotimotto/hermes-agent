@@ -23,4 +23,8 @@ export type {
   DaemonOverall,
   UseDaemonStatusResult,
 } from "./useDaemonStatus";
-
+export { useSessionsHistory } from "./useSessionsHistory";
+export type {
+  UseSessionsHistoryResult,
+  StatusFilter,
+} from "./useSessionsHistory";

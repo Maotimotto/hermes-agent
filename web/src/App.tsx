@@ -90,6 +90,7 @@ import WebhooksPage from "@/pages/WebhooksPage";
 import SystemPage from "@/pages/SystemPage";
 import ChatPage from "@/pages/ChatPage";
 import ControlPlanePage from "@/pages/ControlPlanePage";
+import HistoryPage from "@/pages/HistoryPage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -133,6 +134,7 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/": RootRedirect,
   "/sessions": SessionsPage,
   "/control-plane": ControlPlanePage,
+  "/control-plane/history": HistoryPage,
   "/files": FilesPage,
   "/analytics": AnalyticsPage,
   "/models": ModelsPage,
@@ -171,6 +173,11 @@ const BUILTIN_NAV_REST: NavItem[] = [
     path: "/control-plane",
     label: "Control Plane",
     icon: Activity,
+  },
+  {
+    path: "/control-plane/history",
+    label: "Control Plane · History",
+    icon: Clock,
   },
   { path: "/files", label: "Files", icon: FolderOpen },
   {

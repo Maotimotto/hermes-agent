@@ -10,7 +10,8 @@
  * 组件来自 components/control-plane。页面本身只做布局 + 状态聚合。
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AnimatePresence } from "motion/react";
 import { fetchJSON } from "@/lib/api";
 import { useSessions, useEventStream, useApprovals } from "@/hooks/control-plane";
@@ -37,6 +38,20 @@ export default function ControlPlanePage() {
     createSession,
     deleteSession,
   } = useSessions();
+
+  // Allow deep-linking from /history → /control-plane?session=<sid>
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const sid = searchParams.get("session");
+    if (sid && sid !== selectedSid) {
+      setSelectedSid(sid);
+      // Strip the query so a subsequent manual selection isn't overridden.
+      const next = new URLSearchParams(searchParams);
+      next.delete("session");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const {
     events,

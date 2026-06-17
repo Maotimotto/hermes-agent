@@ -24,6 +24,7 @@ from agent.control_plane.hermes_event import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     AssistantThinkingEvent,
+    FileChangedEvent,
     HermesEvent,
     SessionStartedEvent,
     ToolCompletedEvent,
@@ -413,6 +414,12 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
                 async for msg in client.receive_response():
                     # 检查中断信号
                     if abort_event.is_set():
+                        # 中断也要 flush file changes（agent 已经写过的盘要让用户看到）
+                        async for fce in self._scan_file_changes(
+                            session_id, turn_id, worktree_path, seq,
+                        ):
+                            yield fce
+                            seq += 1
                         yield TurnCancelledEvent(
                             session_id=session_id,
                             turn_id=turn_id,
@@ -435,18 +442,29 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
                         ):
                             self._sessions[session_id] = event.provider_session_id
 
-                        # 记录终端事件
+                        # 终端事件之前先 flush file changes，让 UI 顺序为
+                        # tool.completed → file.changed → turn.completed
                         if isinstance(
                             event,
                             (TurnCompletedEvent, TurnFailedEvent, TurnCancelledEvent),
                         ):
+                            async for fce in self._scan_file_changes(
+                                session_id, turn_id, worktree_path, seq,
+                            ):
+                                yield fce
+                                seq += 1
                             terminal_yielded = True
 
                         yield event
                         seq += 1
 
-            # SDK 迭代结束但未产出终端事件 → 补发 turn.completed
+            # SDK 迭代结束但未产出终端事件 → 补 file changes + turn.completed
             if not terminal_yielded:
+                async for fce in self._scan_file_changes(
+                    session_id, turn_id, worktree_path, seq,
+                ):
+                    yield fce
+                    seq += 1
                 yield TurnCompletedEvent(
                     session_id=session_id,
                     turn_id=turn_id,
@@ -454,12 +472,23 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
                 )
 
         except Exception as exc:
-            # 子进程异常退出 → 产出 error 事件
+            # 子进程异常退出 → 先 flush file changes（异常前可能已写盘），再产出 error 事件
             logger.error(
                 "ClaudeAgentSdkRuntime: turn failed, turn_id=%s error=%s",
                 turn_id,
                 str(exc)[:200],
             )
+            try:
+                async for fce in self._scan_file_changes(
+                    session_id, turn_id, worktree_path, seq,
+                ):
+                    yield fce
+                    seq += 1
+            except Exception:  # noqa: BLE001
+                # 文件扫描出错不能掩盖原始 turn 失败
+                logger.exception(
+                    "ClaudeAgentSdkRuntime: file change scan failed during error path"
+                )
             yield TurnFailedEvent(
                 session_id=session_id,
                 turn_id=turn_id,
@@ -565,6 +594,60 @@ class ClaudeAgentSdkRuntime(AgentRuntime):
             decision.request_id,
             decision.decision,
         )
+
+    # ── 文件变更扫描（W7.5）──────────────────────────────────
+
+    async def _scan_file_changes(
+        self,
+        session_id: str,
+        turn_id: str,
+        worktree_path: str | None,
+        starting_seq: int,
+    ) -> AsyncIterator[FileChangedEvent]:
+        """Scan the worktree for filesystem changes left by the turn.
+
+        Claude SDK does not push file-change events the way Codex does, so we
+        run ``git diff --name-status HEAD`` (+ untracked-files probe) right
+        before the terminal turn event. Each changed file becomes one
+        :class:`FileChangedEvent` so the UI's ``FileChangePanel`` lights up.
+
+        Failure modes are swallowed:
+          * worktree_path missing / not a git repo → yield nothing.
+          * git invocation errors → log + yield nothing (never break the turn).
+        Sequence numbers are assigned starting at *starting_seq*.
+        """
+        if not worktree_path:
+            return
+        try:
+            from pathlib import Path
+
+            from agent.control_plane.workspace.git_ops import get_name_status
+
+            entries = await get_name_status(Path(worktree_path))
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "ClaudeAgentSdkRuntime: file change scan failed turn_id=%s",
+                turn_id,
+            )
+            return
+
+        seq = starting_seq
+        for status, path in entries:
+            operation: Literal["create", "edit", "delete"]
+            if status in ("A", "C", "?"):
+                operation = "create"
+            elif status == "D":
+                operation = "delete"
+            else:
+                operation = "edit"
+            yield FileChangedEvent(
+                session_id=session_id,
+                turn_id=turn_id,
+                seq=seq,
+                path=path,
+                operation=operation,
+            )
+            seq += 1
 
     # ── 健康检查 ──────────────────────────────────────────────
 

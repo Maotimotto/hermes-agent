@@ -144,6 +144,83 @@ async def get_diff(worktree_path: Path) -> list[DiffEntry]:
     return entries
 
 
+async def get_name_status(
+    worktree_path: Path,
+    *,
+    base: str = "HEAD",
+) -> list[tuple[str, str]]:
+    """Return ``[(status, path), ...]`` for each changed file in *worktree_path* vs *base*.
+
+    Status codes (single-letter form):
+      - ``"A"`` — added (create)
+      - ``"M"`` — modified (edit)
+      - ``"D"`` — deleted
+      - ``"R"`` — renamed (we surface as edit with the new path)
+      - ``"C"`` — copied (we surface as create)
+      - ``"T"`` — type change (we surface as edit)
+
+    Workflow:
+      1. ``git diff --name-status base`` — picks up tracked changes (modify/delete/
+         add-with-staging) since *base*.
+      2. ``git ls-files --others --exclude-standard`` — picks up brand-new
+         untracked files that haven't been ``git add``-ed yet (Claude often
+         leaves files untracked because it has no reason to stage them).
+
+    Both lists are merged with the tracked status taking precedence (a file
+    showing up in (1) is never reported again from (2)).
+
+    Resilient to empty repos: when ``git diff base`` fails (e.g. no HEAD), falls
+    back to the staged index (``--cached``).
+    """
+    rc, out, _err = await _run_git(
+        "diff", "--name-status", base,
+        cwd=worktree_path,
+    )
+    if rc != 0:
+        rc, out, _err = await _run_git(
+            "diff", "--name-status", "--cached",
+            cwd=worktree_path,
+        )
+        if rc != 0:
+            out = ""
+
+    seen: set[str] = set()
+    entries: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        line = line.rstrip("\n")
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status_field = parts[0].strip()
+        # Renames look like 'R100\told\tnew' — collapse to single letter + new path.
+        status = status_field[0] if status_field else "M"
+        if status in ("R", "C") and len(parts) >= 3:
+            path = parts[-1]
+        else:
+            path = parts[1]
+        if path in seen:
+            continue
+        seen.add(path)
+        entries.append((status, path))
+
+    # Untracked files (added but not staged).
+    rc, out2, _err2 = await _run_git(
+        "ls-files", "--others", "--exclude-standard",
+        cwd=worktree_path,
+    )
+    if rc == 0:
+        for line in out2.splitlines():
+            path = line.strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            entries.append(("A", path))
+
+    return entries
+
+
 async def is_clean(worktree_path: Path) -> bool:
     """Check whether *worktree_path* has no uncommitted changes.
 

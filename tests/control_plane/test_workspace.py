@@ -13,6 +13,7 @@ import pytest
 from agent.control_plane.workspace.git_ops import (
     create_worktree,
     get_diff,
+    get_name_status,
     is_clean,
     remove_worktree,
     validate_repo,
@@ -336,3 +337,76 @@ async def test_manager_list_with_filters(tmp_path: Path) -> None:
     result_removed = await mgr.list_workspaces(status=WorkspaceStatus.REMOVED)
     assert len(result_removed) == 1
     assert result_removed[0].id == ws1.id
+
+
+# ── get_name_status (W7.5 — Claude file change tracking) ────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_name_status_modified_file(tmp_path: Path) -> None:
+    """A modified tracked file shows up with status M."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "README.md").write_text("initial\nmore\n")
+
+    entries = await get_name_status(repo)
+    assert ("M", "README.md") in entries
+
+
+@pytest.mark.asyncio
+async def test_get_name_status_added_untracked(tmp_path: Path) -> None:
+    """A brand-new untracked file shows up with status A via ls-files probe."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "newfile.py").write_text("print(hi)\n")
+
+    entries = await get_name_status(repo)
+    assert ("A", "newfile.py") in entries
+
+
+@pytest.mark.asyncio
+async def test_get_name_status_added_staged(tmp_path: Path) -> None:
+    """A staged add (git diff sees it but not yet committed) shows up as A."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "added.txt").write_text("hello\n")
+    await _run_git("add", "added.txt", cwd=repo)
+
+    entries = await get_name_status(repo)
+    assert ("A", "added.txt") in entries
+
+
+@pytest.mark.asyncio
+async def test_get_name_status_deleted_file(tmp_path: Path) -> None:
+    """A deleted tracked file shows up with status D."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "README.md").unlink()
+
+    entries = await get_name_status(repo)
+    assert ("D", "README.md") in entries
+
+
+@pytest.mark.asyncio
+async def test_get_name_status_no_changes(tmp_path: Path) -> None:
+    """Clean repo returns an empty list."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+
+    entries = await get_name_status(repo)
+    assert entries == []
+
+
+@pytest.mark.asyncio
+async def test_get_name_status_dedupes_tracked_over_untracked(tmp_path: Path) -> None:
+    """Tracked status takes precedence over the untracked probe (no double-count)."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    # Stage a new file so it appears in `git diff --cached`-style flow,
+    # but ls-files --others would also surface it before staging.
+    (repo / "staged.txt").write_text("x\n")
+    await _run_git("add", "staged.txt", cwd=repo)
+
+    entries = await get_name_status(repo)
+    paths = [p for _s, p in entries]
+    assert paths.count("staged.txt") == 1

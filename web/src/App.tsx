@@ -91,6 +91,7 @@ import SystemPage from "@/pages/SystemPage";
 import ChatPage from "@/pages/ChatPage";
 import ControlPlanePage from "@/pages/ControlPlanePage";
 import HistoryPage from "@/pages/HistoryPage";
+import ControlPlaneSettingsPage from "@/pages/ControlPlaneSettingsPage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -135,6 +136,7 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/sessions": SessionsPage,
   "/control-plane": ControlPlanePage,
   "/control-plane/history": HistoryPage,
+  "/control-plane/settings": ControlPlaneSettingsPage,
   "/files": FilesPage,
   "/analytics": AnalyticsPage,
   "/models": ModelsPage,
@@ -178,6 +180,11 @@ const BUILTIN_NAV_REST: NavItem[] = [
     path: "/control-plane/history",
     label: "Control Plane · History",
     icon: Clock,
+  },
+  {
+    path: "/control-plane/settings",
+    label: "Control Plane · Settings",
+    icon: Settings,
   },
   { path: "/files", label: "Files", icon: FolderOpen },
   {

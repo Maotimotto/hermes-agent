@@ -20,6 +20,8 @@ from typing import Protocol, runtime_checkable
 from .git_ops import (
     create_worktree,
     get_diff,
+    get_name_status,
+    get_unified_diff,
     is_clean,
     remove_worktree,
     validate_branch,
@@ -212,6 +214,48 @@ class WorkspaceManager:
         if ws is None:
             raise KeyError(f"Workspace not found: {workspace_id}")
         return await get_diff(Path(ws.worktree_path))
+
+    async def get_name_status(
+        self,
+        workspace_id: str,
+        *,
+        base: str = "HEAD",
+    ) -> list[tuple[str, str]]:
+        """Get ``[(status_letter, path), ...]`` for a workspace vs *base*.
+
+        Raises:
+            KeyError: workspace not found.
+        """
+        ws = await self._store.get_workspace(workspace_id)
+        if ws is None:
+            raise KeyError(f"Workspace not found: {workspace_id}")
+        return await get_name_status(Path(ws.worktree_path), base=base)
+
+    async def get_unified_diff(
+        self,
+        workspace_id: str,
+        *,
+        base: str = "HEAD",
+        paths: list[str] | None = None,
+        context_lines: int = 3,
+    ) -> dict[str, str]:
+        """Get unified diff text per file for a workspace vs *base*.
+
+        See :func:`agent.control_plane.workspace.git_ops.get_unified_diff` for
+        argument semantics.
+
+        Raises:
+            KeyError: workspace not found.
+        """
+        ws = await self._store.get_workspace(workspace_id)
+        if ws is None:
+            raise KeyError(f"Workspace not found: {workspace_id}")
+        return await get_unified_diff(
+            Path(ws.worktree_path),
+            base=base,
+            paths=paths,
+            context_lines=context_lines,
+        )
 
     async def is_clean(self, workspace_id: str) -> bool:
         """Check if workspace has no uncommitted changes.

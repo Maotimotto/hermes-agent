@@ -221,6 +221,93 @@ async def get_name_status(
     return entries
 
 
+async def get_unified_diff(
+    worktree_path: Path,
+    *,
+    base: str = "HEAD",
+    paths: list[str] | None = None,
+    context_lines: int = 3,
+) -> dict[str, str]:
+    """Return per-file unified diff text for changes in *worktree_path* vs *base*.
+
+    Result map: ``{path: diff_text}`` where ``diff_text`` is the standard
+    unified diff (including the ``diff --git`` header) for that single file.
+
+    Args:
+        worktree_path: Worktree root.
+        base: Diff base ref (default ``HEAD``).
+        paths: Optional explicit path list. When omitted, all changed files
+            from :func:`get_name_status` are included (tracked + untracked).
+        context_lines: ``-U<N>`` value for git diff. Default 3.
+
+    Workflow:
+      1. Resolve the path list:
+         - If ``paths`` given, use it verbatim.
+         - Otherwise call :func:`get_name_status` to discover changes.
+      2. For each path, decide tracked vs untracked:
+         - Tracked → ``git diff -U<N> base -- <path>``
+         - Untracked → ``git diff --no-index -U<N> /dev/null <path>``
+           (returns rc=1 on diff present, which is normal)
+      3. Empty diff (no actual textual change) → skip; don't include the key.
+
+    Resilient to:
+      - empty repo (base resolution falls back to ``--cached``)
+      - binary files (diff body simply says "Binary files differ"; we keep it)
+      - non-existent paths (silently skipped, no entry in the result)
+    """
+    if paths is None:
+        entries = await get_name_status(worktree_path, base=base)
+        paths = [p for _status, p in entries]
+
+    if not paths:
+        return {}
+
+    # Discover which files are tracked vs untracked, so we know which
+    # form of `git diff` to use.
+    rc, tracked_out, _ = await _run_git(
+        "ls-files", "--", *paths,
+        cwd=worktree_path,
+    )
+    tracked_set: set[str] = set()
+    if rc == 0:
+        for line in tracked_out.splitlines():
+            line = line.strip()
+            if line:
+                tracked_set.add(line)
+
+    result: dict[str, str] = {}
+    ctx_flag = f"-U{max(0, int(context_lines))}"
+
+    for path in paths:
+        if path in tracked_set:
+            rc, out, _err = await _run_git(
+                "diff", ctx_flag, base, "--", path,
+                cwd=worktree_path,
+            )
+            if rc != 0:
+                # Empty repo / unknown base — fall back to staged index.
+                rc, out, _err = await _run_git(
+                    "diff", ctx_flag, "--cached", "--", path,
+                    cwd=worktree_path,
+                )
+                if rc != 0:
+                    continue
+            if out.strip():
+                result[path] = out
+        else:
+            # Untracked: synthesize diff against /dev/null. rc=1 is "diff present".
+            rc, out, _err = await _run_git(
+                "diff", "--no-index", ctx_flag, "/dev/null", path,
+                cwd=worktree_path,
+            )
+            # rc 0 = no diff (rare for an untracked file); rc 1 = diff present;
+            # rc >1 = real failure.
+            if rc <= 1 and out.strip():
+                result[path] = out
+
+    return result
+
+
 async def is_clean(worktree_path: Path) -> bool:
     """Check whether *worktree_path* has no uncommitted changes.
 

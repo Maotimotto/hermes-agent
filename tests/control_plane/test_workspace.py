@@ -14,6 +14,7 @@ from agent.control_plane.workspace.git_ops import (
     create_worktree,
     get_diff,
     get_name_status,
+    get_unified_diff,
     is_clean,
     remove_worktree,
     validate_repo,
@@ -410,3 +411,122 @@ async def test_get_name_status_dedupes_tracked_over_untracked(tmp_path: Path) ->
     entries = await get_name_status(repo)
     paths = [p for _s, p in entries]
     assert paths.count("staged.txt") == 1
+
+
+# ── unified_diff tests ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_unified_diff_modified_file(tmp_path: Path) -> None:
+    """Modified tracked file produces a unified diff with +/- markers."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    # README.md exists; modify it
+    (repo / "README.md").write_text("initial\nsecond line\n")
+
+    diffs = await get_unified_diff(repo)
+    assert "README.md" in diffs
+    body = diffs["README.md"]
+    assert "diff --git" in body
+    assert "+second line" in body
+
+
+@pytest.mark.asyncio
+async def test_get_unified_diff_untracked_file(tmp_path: Path) -> None:
+    """Untracked file is diffed against /dev/null."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "new_file.py").write_text("print('hello')\n")
+
+    diffs = await get_unified_diff(repo)
+    assert "new_file.py" in diffs
+    body = diffs["new_file.py"]
+    # /dev/null diff still emits a diff header and a + line
+    assert "+print('hello')" in body
+
+
+@pytest.mark.asyncio
+async def test_get_unified_diff_explicit_paths_filter(tmp_path: Path) -> None:
+    """Passing paths= restricts the result to that subset."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "a.txt").write_text("a\n")
+    (repo / "b.txt").write_text("b\n")
+
+    diffs = await get_unified_diff(repo, paths=["a.txt"])
+    assert list(diffs.keys()) == ["a.txt"]
+
+
+@pytest.mark.asyncio
+async def test_get_unified_diff_no_changes(tmp_path: Path) -> None:
+    """Clean repo returns an empty dict."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+
+    diffs = await get_unified_diff(repo)
+    assert diffs == {}
+
+
+@pytest.mark.asyncio
+async def test_get_unified_diff_deleted_file(tmp_path: Path) -> None:
+    """Deleted tracked file shows up as a removal diff."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    (repo / "README.md").unlink()
+
+    diffs = await get_unified_diff(repo)
+    assert "README.md" in diffs
+    assert "-initial" in diffs["README.md"]
+
+
+@pytest.mark.asyncio
+async def test_manager_get_unified_diff(tmp_path: Path) -> None:
+    """WorkspaceManager.get_unified_diff delegates to git_ops correctly."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+
+    ws_root = tmp_path / "workspaces"
+    mgr = WorkspaceManager(workspaces_root=ws_root)
+
+    ws = await mgr.create_workspace(repo, "main", "sess_unified")
+    wt = Path(ws.worktree_path)
+    (wt / "README.md").write_text("initial\nchanged\n")
+    (wt / "added.py").write_text("x = 1\n")
+
+    diffs = await mgr.get_unified_diff(ws.id)
+    assert "README.md" in diffs
+    assert "added.py" in diffs
+    assert "+changed" in diffs["README.md"]
+    assert "+x = 1" in diffs["added.py"]
+
+
+@pytest.mark.asyncio
+async def test_manager_get_name_status(tmp_path: Path) -> None:
+    """WorkspaceManager.get_name_status returns ``[(status, path), ...]``."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+
+    ws_root = tmp_path / "workspaces"
+    mgr = WorkspaceManager(workspaces_root=ws_root)
+
+    ws = await mgr.create_workspace(repo, "main", "sess_ns")
+    wt = Path(ws.worktree_path)
+    (wt / "added.py").write_text("x = 1\n")
+    (wt / "README.md").write_text("initial\nupdated\n")
+
+    entries = await mgr.get_name_status(ws.id)
+    by_path = {p: s for s, p in entries}
+    assert by_path.get("added.py") == "A"
+    assert by_path.get("README.md") == "M"
+
+
+@pytest.mark.asyncio
+async def test_get_unified_diff_unknown_paths_silently_skipped(
+    tmp_path: Path,
+) -> None:
+    """Paths that don't exist are silently skipped, not raised."""
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+
+    diffs = await get_unified_diff(repo, paths=["does_not_exist.txt"])
+    assert diffs == {}

@@ -29,6 +29,7 @@ from gateway.control_plane.routes import (
     providers,
     sessions,
     turns,
+    workspaces,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,7 @@ def create_control_plane_app(
     app.include_router(events.router)
     app.include_router(approvals.router)
     app.include_router(providers.router)
+    app.include_router(workspaces.router)
     app.include_router(health.router)
 
     # 统一错误信封 — 必须在 router 之后注册才能覆盖 FastAPI 默认 422 响应

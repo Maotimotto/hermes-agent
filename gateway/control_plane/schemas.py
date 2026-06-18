@@ -146,6 +146,39 @@ class ProviderListResponse(BaseModel):
     providers: list[ProviderInfo]
 
 
+# ── Workspace schemas ───────────────────────────────────────────────────────
+
+
+class WorkspaceFileEntry(BaseModel):
+    """单个变更文件的摘要。"""
+
+    path: str
+    status: str  # "create" | "edit" | "delete" — 与 file.changed 事件一致
+    additions: int = 0
+    deletions: int = 0
+
+
+class WorkspaceDiffSummaryResponse(BaseModel):
+    """GET /workspaces/{id}/diff 摘要响应。"""
+
+    workspace_id: str
+    files: list[WorkspaceFileEntry]
+    total_additions: int = 0
+    total_deletions: int = 0
+    total_files: int = 0
+
+
+class WorkspaceUnifiedDiffResponse(BaseModel):
+    """GET /workspaces/{id}/diff/unified 完整 unified diff 响应。
+
+    ``diffs`` 是 ``{path: unified_diff_text}`` map；``path`` 顺序保持调用 git
+    时的顺序，前端可按需排序。
+    """
+
+    workspace_id: str
+    diffs: dict[str, str]
+
+
 # ── Health schema ───────────────────────────────────────────────────────────
 
 

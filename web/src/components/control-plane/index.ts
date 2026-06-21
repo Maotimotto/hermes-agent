@@ -29,4 +29,6 @@ export { ErrorBanner } from "./ErrorBanner";
 export type { ErrorBannerProps, ErrorBannerSource } from "./ErrorBanner";
 export { DiffPanel } from "./DiffPanel";
 export type { DiffPanelProps } from "./DiffPanel";
+export { ExportButton } from "./ExportButton";
+export type { ExportButtonProps } from "./ExportButton";
 

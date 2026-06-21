@@ -25,6 +25,7 @@ import {
   ErrorBanner,
   FileChangePanel,
   DiffPanel,
+  ExportButton,
   ControlPlaneTopBar,
 } from "@/components/control-plane";
 
@@ -322,6 +323,7 @@ export default function ControlPlanePage() {
             </span>
           )}
           {selectedSid && <WsStatusBadge status={wsStatus} />}
+          {selectedSid && <ExportButton sessionId={selectedSid} />}
         </header>
 
         <div

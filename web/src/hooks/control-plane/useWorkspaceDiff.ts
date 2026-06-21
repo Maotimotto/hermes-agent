@@ -49,6 +49,8 @@ export type UseWorkspaceDiffResult = {
   unifiedDiffs: Record<string, string>;
   /** 按需拉某个 path 的 unified diff，已缓存则直接返回。 */
   loadUnified: (path: string) => Promise<string>;
+  /** 一次性批量拉多个 path 的 unified diff（不缓存）。Wave D 整体 patch 导出用。 */
+  fetchUnifiedBatch: (paths: string[]) => Promise<Record<string, string>>;
   /** 手动刷新摘要。 */
   reload: () => void;
 };
@@ -149,6 +151,24 @@ export function useWorkspaceDiff(
     if (workspaceId) void fetchSummary(workspaceId, base);
   }, [workspaceId, base, fetchSummary]);
 
+  /**
+   * 一次性拉取多个 path 的 unified diff（不写入 cache，避免占内存）。
+   * Wave D：用于整体 patch 导出。
+   */
+  const fetchUnifiedBatch = useCallback(
+    async (paths: string[]): Promise<Record<string, string>> => {
+      if (!workspaceId || paths.length === 0) return {};
+      const qs = new URLSearchParams();
+      for (const p of paths) qs.append("paths", p);
+      if (base && base !== "HEAD") qs.set("base", base);
+      const r = await fetchJSON<UnifiedDiffResponse>(
+        `/control-plane/workspaces/${encodeURIComponent(workspaceId)}/diff/unified?${qs}`,
+      );
+      return r.diffs || {};
+    },
+    [workspaceId, base],
+  );
+
   return {
     files,
     totalAdditions,
@@ -158,6 +178,7 @@ export function useWorkspaceDiff(
     error,
     unifiedDiffs,
     loadUnified,
+    fetchUnifiedBatch,
     reload,
   };
 }

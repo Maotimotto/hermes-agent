@@ -58,8 +58,11 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
     error,
     unifiedDiffs,
     loadUnified,
+    fetchUnifiedBatch,
     reload,
   } = useWorkspaceDiff(workspaceId, base);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const visibleFiles = useMemo(() => {
     const q = pathQuery.trim().toLowerCase();
@@ -99,6 +102,51 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
   const submitBase = () => {
     const trimmed = baseInput.trim() || "HEAD";
     if (trimmed !== base) setBase(trimmed);
+  };
+
+  const exportPatch = async () => {
+    if (visibleFiles.length === 0 || exporting) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const paths = visibleFiles.map((f) => f.path);
+      // 优先用 cache，缺的批量拉一次
+      const missing = paths.filter((p) => unifiedDiffs[p] === undefined);
+      let fetched: Record<string, string> = {};
+      if (missing.length > 0) {
+        fetched = await fetchUnifiedBatch(missing);
+      }
+      const parts: string[] = [];
+      for (const p of paths) {
+        const text = unifiedDiffs[p] ?? fetched[p] ?? "";
+        if (text.trim()) parts.push(text.endsWith("\n") ? text : text + "\n");
+      }
+      const body = parts.join("");
+      if (!body) {
+        setExportError("nothing to export");
+        return;
+      }
+      const blob = new Blob([body], { type: "text/x-patch" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date()
+        .toISOString()
+        .replace(/[:T]/g, "-")
+        .replace(/\..+/, "");
+      const safeBase = base.replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const safeWid = (workspaceId ?? "ws").slice(0, 12);
+      a.href = url;
+      a.download = `workspace-${safeWid}-${safeBase}-${ts}.patch`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // 浏览器拿到 blob 后释放
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e) {
+      setExportError((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -176,6 +224,29 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
           </span>
         </button>
         <DiffViewSwitcher mode={viewMode} onChange={setViewMode} />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void exportPatch();
+          }}
+          disabled={exporting || visibleFiles.length === 0}
+          title="Export visible files as a single .patch"
+          style={{
+            padding: "2px 8px",
+            fontSize: 11,
+            border: "1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 18%, transparent)",
+            borderRadius: 3,
+            background: "transparent",
+            color:
+              exporting || visibleFiles.length === 0
+                ? "var(--color-text-secondary, #6b7280)"
+                : "var(--midground, #ffe6cb)",
+            cursor: exporting ? "wait" : visibleFiles.length === 0 ? "not-allowed" : "pointer",
+            fontFamily: "var(--theme-font-mono, monospace)",
+          }}
+        >
+          {exporting ? "…" : "↓ .patch"}
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -327,6 +398,20 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
           }}
         >
           diff error: {error}
+        </div>
+      )}
+
+      {exportError && (
+        <div
+          style={{
+            padding: "6px 12px",
+            fontSize: 11,
+            color: "#fca5a5",
+            background: "color-mix(in srgb, #ef4444 8%, transparent)",
+            borderTop: "1px solid color-mix(in srgb, #ef4444 22%, transparent)",
+          }}
+        >
+          export error: {exportError}
         </div>
       )}
 

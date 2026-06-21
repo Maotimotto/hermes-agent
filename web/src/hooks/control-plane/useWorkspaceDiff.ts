@@ -57,6 +57,7 @@ const POLL_INTERVAL_MS = 30_000;
 
 export function useWorkspaceDiff(
   workspaceId: string | null | undefined,
+  base: string = "HEAD",
 ): UseWorkspaceDiffResult {
   const [files, setFiles] = useState<DiffFileEntry[]>([]);
   const [totalAdditions, setTotalAdditions] = useState(0);
@@ -69,12 +70,15 @@ export function useWorkspaceDiff(
   const cancelledRef = useRef(false);
   const tickRef = useRef(0);
 
-  const fetchSummary = useCallback(async (id: string) => {
+  const fetchSummary = useCallback(async (id: string, baseRef: string) => {
     const myTick = ++tickRef.current;
     try {
-      const r = await fetchJSON<DiffSummaryResponse>(
-        `/control-plane/workspaces/${encodeURIComponent(id)}/diff`,
-      );
+      const qs = new URLSearchParams();
+      if (baseRef && baseRef !== "HEAD") qs.set("base", baseRef);
+      const url = `/control-plane/workspaces/${encodeURIComponent(id)}/diff${
+        qs.toString() ? "?" + qs : ""
+      }`;
+      const r = await fetchJSON<DiffSummaryResponse>(url);
       if (cancelledRef.current || myTick !== tickRef.current) return;
       setFiles(r.files || []);
       setTotalAdditions(r.total_additions ?? 0);
@@ -91,7 +95,7 @@ export function useWorkspaceDiff(
     }
   }, []);
 
-  // workspaceId 切换时清缓存 + 重启轮询
+  // workspaceId / base 切换时清缓存 + 重启轮询
   useEffect(() => {
     cancelledRef.current = false;
     // workspaceId 切换 → 清掉旧 workspace 的 unified diff 缓存。
@@ -111,15 +115,15 @@ export function useWorkspaceDiff(
       };
     }
     setLoading(true);
-    void fetchSummary(workspaceId);
+    void fetchSummary(workspaceId, base);
     const id = setInterval(() => {
-      if (!cancelledRef.current) void fetchSummary(workspaceId);
+      if (!cancelledRef.current) void fetchSummary(workspaceId, base);
     }, POLL_INTERVAL_MS);
     return () => {
       cancelledRef.current = true;
       clearInterval(id);
     };
-  }, [workspaceId, fetchSummary]);
+  }, [workspaceId, base, fetchSummary]);
 
   const loadUnified = useCallback(
     async (path: string): Promise<string> => {
@@ -129,6 +133,7 @@ export function useWorkspaceDiff(
       if (cached !== undefined) return cached;
       const qs = new URLSearchParams();
       qs.set("paths", path);
+      if (base && base !== "HEAD") qs.set("base", base);
       const r = await fetchJSON<UnifiedDiffResponse>(
         `/control-plane/workspaces/${encodeURIComponent(workspaceId)}/diff/unified?${qs}`,
       );
@@ -137,12 +142,12 @@ export function useWorkspaceDiff(
       setUnifiedDiffs((prev) => ({ ...prev, [path]: diff }));
       return diff;
     },
-    [workspaceId, unifiedDiffs],
+    [workspaceId, base, unifiedDiffs],
   );
 
   const reload = useCallback(() => {
-    if (workspaceId) void fetchSummary(workspaceId);
-  }, [workspaceId, fetchSummary]);
+    if (workspaceId) void fetchSummary(workspaceId, base);
+  }, [workspaceId, base, fetchSummary]);
 
   return {
     files,

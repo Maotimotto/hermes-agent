@@ -13,7 +13,7 @@
  *   - 单文件 diff 默认折叠 + 200 行截断（与 FileChangePanel 视觉一致）
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   useWorkspaceDiff,
@@ -24,6 +24,9 @@ import {
   DiffViewSwitcher,
   type DiffViewMode,
 } from "./diff-renderer";
+
+const ALL_STATUSES = ["create", "edit", "delete"] as const;
+type DiffStatus = (typeof ALL_STATUSES)[number];
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   create: { label: "A", color: "#065f46", bg: "#d1fae5" },
@@ -39,6 +42,13 @@ export type DiffPanelProps = {
 export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [viewMode, setViewMode] = useState<DiffViewMode>("unified");
+  // base ref：实际生效的（提交后才发请求）；baseInput：输入框 buffer
+  const [base, setBase] = useState("HEAD");
+  const [baseInput, setBaseInput] = useState("HEAD");
+  const [statusFilter, setStatusFilter] = useState<Set<DiffStatus>>(
+    () => new Set(ALL_STATUSES),
+  );
+  const [pathQuery, setPathQuery] = useState("");
   const {
     files,
     totalAdditions,
@@ -49,10 +59,47 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
     unifiedDiffs,
     loadUnified,
     reload,
-  } = useWorkspaceDiff(workspaceId);
+  } = useWorkspaceDiff(workspaceId, base);
+
+  const visibleFiles = useMemo(() => {
+    const q = pathQuery.trim().toLowerCase();
+    return files.filter((f) => {
+      if (!statusFilter.has(f.status as DiffStatus)) return false;
+      if (q && !f.path.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [files, statusFilter, pathQuery]);
+
+  const visibleTotals = useMemo(() => {
+    return visibleFiles.reduce(
+      (acc, f) => ({
+        adds: acc.adds + f.additions,
+        dels: acc.dels + f.deletions,
+      }),
+      { adds: 0, dels: 0 },
+    );
+  }, [visibleFiles]);
 
   if (!workspaceId) return null;
   if (!loading && files.length === 0 && !error) return null;
+
+  const filtered = visibleFiles.length !== files.length;
+
+  const toggleStatus = (s: DiffStatus) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      // 全空时回填全开（避免误把列表过滤成空）
+      if (next.size === 0) return new Set(ALL_STATUSES);
+      return next;
+    });
+  };
+
+  const submitBase = () => {
+    const trimmed = baseInput.trim() || "HEAD";
+    if (trimmed !== base) setBase(trimmed);
+  };
 
   return (
     <motion.section
@@ -114,11 +161,18 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
             />
           )}
           <span style={{ color: "var(--color-text-secondary, #6b7280)", fontWeight: 400 }}>
-            {totalFiles} file{totalFiles === 1 ? "" : "s"}
+            {filtered
+              ? `${visibleFiles.length}/${totalFiles}`
+              : `${totalFiles}`}{" "}
+            file{totalFiles === 1 ? "" : "s"}
           </span>
           <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8 }}>
-            <span style={{ color: "#34d399" }}>+{totalAdditions}</span>
-            <span style={{ color: "#fb7185" }}>−{totalDeletions}</span>
+            <span style={{ color: "#34d399" }}>
+              +{filtered ? visibleTotals.adds : totalAdditions}
+            </span>
+            <span style={{ color: "#fb7185" }}>
+              −{filtered ? visibleTotals.dels : totalDeletions}
+            </span>
           </span>
         </button>
         <DiffViewSwitcher mode={viewMode} onChange={setViewMode} />
@@ -143,6 +197,125 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
         </button>
       </div>
 
+      {/* toolbar 第二行：base ref / status filter / path search (Wave C) */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "0 10px 8px 10px",
+          fontFamily: "var(--theme-font-mono, monospace)",
+          fontSize: 11,
+          color: "var(--color-text-secondary, #6b7280)",
+        }}
+      >
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          base
+          <input
+            type="text"
+            value={baseInput}
+            onChange={(e) => setBaseInput(e.target.value)}
+            onBlur={submitBase}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitBase();
+              }
+            }}
+            placeholder="HEAD"
+            spellCheck={false}
+            style={{
+              width: 90,
+              padding: "1px 6px",
+              fontSize: 11,
+              fontFamily: "inherit",
+              border: "1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 18%, transparent)",
+              borderRadius: 3,
+              background: "transparent",
+              color: "var(--midground, #ffe6cb)",
+              outline: "none",
+            }}
+          />
+        </label>
+
+        <div style={{ display: "inline-flex", gap: 4 }}>
+          {ALL_STATUSES.map((s) => {
+            const meta = STATUS_META[s];
+            const active = statusFilter.has(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => toggleStatus(s)}
+                title={s}
+                style={{
+                  padding: "1px 6px",
+                  fontSize: 10,
+                  border: `1px solid ${
+                    active
+                      ? meta.color
+                      : "color-mix(in srgb, var(--midground-base, #ffe6cb) 14%, transparent)"
+                  }`,
+                  borderRadius: 3,
+                  background: active ? meta.bg : "transparent",
+                  color: active ? meta.color : "var(--color-text-secondary, #6b7280)",
+                  fontWeight: active ? 700 : 400,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          type="text"
+          value={pathQuery}
+          onChange={(e) => setPathQuery(e.target.value)}
+          placeholder="filter path…"
+          spellCheck={false}
+          style={{
+            flex: 1,
+            padding: "1px 6px",
+            fontSize: 11,
+            fontFamily: "inherit",
+            border: "1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 18%, transparent)",
+            borderRadius: 3,
+            background: "transparent",
+            color: "var(--midground, #ffe6cb)",
+            outline: "none",
+          }}
+        />
+        {(pathQuery ||
+          statusFilter.size !== ALL_STATUSES.length ||
+          base !== "HEAD") && (
+          <button
+            type="button"
+            onClick={() => {
+              setPathQuery("");
+              setStatusFilter(new Set(ALL_STATUSES));
+              setBaseInput("HEAD");
+              if (base !== "HEAD") setBase("HEAD");
+            }}
+            title="Clear filters"
+            style={{
+              padding: "1px 6px",
+              fontSize: 10,
+              border: "1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 18%, transparent)",
+              borderRadius: 3,
+              background: "transparent",
+              color: "var(--color-text-secondary, #6b7280)",
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            clear
+          </button>
+        )}
+      </div>
+
       {error && (
         <div
           style={{
@@ -158,7 +331,7 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
       )}
 
       <AnimatePresence initial={false}>
-        {open && files.length > 0 && (
+        {open && visibleFiles.length > 0 && (
           <motion.ul
             key="list"
             initial={{ height: 0, opacity: 0 }}
@@ -173,7 +346,7 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
               overflow: "hidden",
             }}
           >
-            {files.map((f) => (
+            {visibleFiles.map((f) => (
               <DiffFileRow
                 key={f.path}
                 file={f}
@@ -185,6 +358,20 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
           </motion.ul>
         )}
       </AnimatePresence>
+
+      {open && files.length > 0 && visibleFiles.length === 0 && (
+        <div
+          style={{
+            padding: "10px 12px",
+            fontSize: 11,
+            color: "var(--color-text-secondary, #6b7280)",
+            borderTop: "1px solid color-mix(in srgb, var(--midground-base, #ffe6cb) 10%, transparent)",
+            fontStyle: "italic",
+          }}
+        >
+          no files match current filter
+        </div>
+      )}
     </motion.section>
   );
 }

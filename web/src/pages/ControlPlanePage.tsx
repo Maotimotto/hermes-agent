@@ -24,6 +24,7 @@ import {
   ErrorToast,
   ErrorBanner,
   FileChangePanel,
+  DiffPanel,
   ControlPlaneTopBar,
 } from "@/components/control-plane";
 
@@ -333,6 +334,11 @@ export default function ControlPlanePage() {
           }}
         >
           {selectedSid && <FileChangePanel events={events} />}
+          {selectedSid && (
+            <DiffPanel
+              workspaceId={sessions.find((s) => s.id === selectedSid)?.workspace_id ?? null}
+            />
+          )}
           <EventTimeline events={events} hasSelection={!!selectedSid} />
         </div>
 

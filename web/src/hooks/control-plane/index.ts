@@ -34,3 +34,5 @@ export type {
   TurnFailureBannerApi,
   UseTurnFailureBannerResult,
 } from "./useTurnFailureBanner";
+export { useWorkspaceDiff } from "./useWorkspaceDiff";
+export type { DiffFileEntry, UseWorkspaceDiffResult } from "./useWorkspaceDiff";

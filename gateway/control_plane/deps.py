@@ -13,7 +13,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from fastapi import Depends, Request
 
@@ -28,6 +28,9 @@ from agent.control_plane.store import (
 from agent.control_plane.workspace import InMemoryWorkspaceStore, WorkspaceManager
 from agent.control_plane.runtimes.interface import AgentRuntime, HealthStatus
 from agent.control_plane.provider_health import ProviderHealthMonitor
+
+if TYPE_CHECKING:
+    from gateway.control_plane.templates_store import TemplatesStore
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +127,10 @@ class AppState:
         # ProviderHealthMonitor — lazy init in lifespan startup, after the
         # registry has been populated by build_default_runtimes.
         self.provider_health: "ProviderHealthMonitor | None" = None
+        # Task templates store — lazy init on first request via the
+        # ``get_templates_store`` dependency, so tests can monkey-patch the
+        # storage path before the first read.
+        self.templates_store: "TemplatesStore | None" = None
 
     def ensure_approval_gate(self) -> ApprovalGate:
         """Construct the ApprovalGate once the store is ready.

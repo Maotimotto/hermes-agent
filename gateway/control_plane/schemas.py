@@ -208,6 +208,64 @@ class HealthResponse(BaseModel):
     runtime: dict[str, Any] = {}
 
 
+# ── Task template schemas ───────────────────────────────────────────────────
+
+
+class TemplateParamSchema(BaseModel):
+    """模板参数定义。"""
+
+    name: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=128)
+    default: str | None = None
+    placeholder: str | None = None
+
+
+class TemplateSchema(BaseModel):
+    """模板完整描述（响应 / 列表元素）。"""
+
+    id: str
+    name: str
+    description: str = ""
+    body: str
+    params: list[TemplateParamSchema] = []
+
+
+class TemplateListResponse(BaseModel):
+    """GET /templates 响应。"""
+
+    templates: list[TemplateSchema]
+
+
+class TemplateCreate(BaseModel):
+    """POST /templates 请求体。``id`` 由 server 生成。"""
+
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str = ""
+    body: str = Field(..., min_length=1)
+    params: list[TemplateParamSchema] = []
+
+
+class TemplateUpdate(BaseModel):
+    """PATCH /templates/{id} 请求体——所有字段可选。"""
+
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = None
+    body: str | None = Field(default=None, min_length=1)
+    params: list[TemplateParamSchema] | None = None
+
+
+class TemplateRenderRequest(BaseModel):
+    """POST /templates/{id}/render 请求体。"""
+
+    params: dict[str, Any] = {}
+
+
+class TemplateRenderResponse(BaseModel):
+    """POST /templates/{id}/render 响应。"""
+
+    rendered: str
+
+
 # ── Error envelope ──────────────────────────────────────────────────────────
 
 

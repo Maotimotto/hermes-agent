@@ -19,6 +19,11 @@ import {
   useWorkspaceDiff,
   type DiffFileEntry,
 } from "@/hooks/control-plane/useWorkspaceDiff";
+import {
+  DiffRenderer,
+  DiffViewSwitcher,
+  type DiffViewMode,
+} from "./diff-renderer";
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   create: { label: "A", color: "#065f46", bg: "#d1fae5" },
@@ -33,6 +38,7 @@ export type DiffPanelProps = {
 
 export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const [viewMode, setViewMode] = useState<DiffViewMode>("unified");
   const {
     files,
     totalAdditions,
@@ -115,6 +121,7 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
             <span style={{ color: "#fb7185" }}>−{totalDeletions}</span>
           </span>
         </button>
+        <DiffViewSwitcher mode={viewMode} onChange={setViewMode} />
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -172,6 +179,7 @@ export function DiffPanel({ workspaceId, defaultOpen = true }: DiffPanelProps) {
                 file={f}
                 cachedDiff={unifiedDiffs[f.path]}
                 onLoad={() => loadUnified(f.path)}
+                viewMode={viewMode}
               />
             ))}
           </motion.ul>
@@ -187,10 +195,12 @@ function DiffFileRow({
   file,
   cachedDiff,
   onLoad,
+  viewMode,
 }: {
   file: DiffFileEntry;
   cachedDiff: string | undefined;
   onLoad: () => Promise<string>;
+  viewMode: DiffViewMode;
 }) {
   const [open, setOpen] = useState(false);
   const [diffText, setDiffText] = useState<string | undefined>(cachedDiff);
@@ -328,7 +338,7 @@ function DiffFileRow({
                 no diff content
               </div>
             ) : (
-              <UnifiedDiffView text={diffText} />
+              <DiffRenderer text={diffText} mode={viewMode} />
             )}
           </motion.div>
         )}
@@ -337,66 +347,4 @@ function DiffFileRow({
   );
 }
 
-// ── Unified diff renderer ─────────────────────────────────────────────
-
-const MAX_LINES = 400;
-
-function UnifiedDiffView({ text }: { text: string }) {
-  const allLines = text.split("\n");
-  const truncated = allLines.length > MAX_LINES;
-  const lines = truncated ? allLines.slice(0, MAX_LINES) : allLines;
-
-  return (
-    <pre
-      style={{
-        margin: 0,
-        padding: "6px 0",
-        fontSize: 11,
-        lineHeight: 1.5,
-        background: "color-mix(in srgb, #000 30%, var(--background-base, #041c1c))",
-        color: "#e6e6e6",
-        maxHeight: 360,
-        overflow: "auto",
-        whiteSpace: "pre",
-      }}
-    >
-      {lines.map((line, i) => (
-        <DiffLine key={i} line={line} />
-      ))}
-      {truncated && (
-        <div
-          style={{
-            padding: "4px 12px",
-            fontSize: 10,
-            color: "#9ca3af",
-            fontStyle: "italic",
-          }}
-        >
-          … truncated, {allLines.length - MAX_LINES} more lines
-        </div>
-      )}
-    </pre>
-  );
-}
-
-function DiffLine({ line }: { line: string }) {
-  let bg = "transparent";
-  let color = "#e6e6e6";
-  if (line.startsWith("+++") || line.startsWith("---")) {
-    color = "#9ca3af";
-  } else if (line.startsWith("@@")) {
-    bg = "color-mix(in srgb, #6366f1 12%, transparent)";
-    color = "#a5b4fc";
-  } else if (line.startsWith("+")) {
-    bg = "color-mix(in srgb, #10b981 12%, transparent)";
-    color = "#6ee7b7";
-  } else if (line.startsWith("-")) {
-    bg = "color-mix(in srgb, #ef4444 14%, transparent)";
-    color = "#fca5a5";
-  } else if (line.startsWith("diff ") || line.startsWith("index ")) {
-    color = "#9ca3af";
-  }
-  return (
-    <div style={{ background: bg, color, padding: "0 12px" }}>{line || "\u00A0"}</div>
-  );
-}
+// 老的内联 UnifiedDiffView / DiffLine 已迁出到 ./diff-renderer.tsx (Wave B)。

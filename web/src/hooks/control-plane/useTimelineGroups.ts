@@ -54,6 +54,7 @@ const LIFECYCLE_TYPES = new Set([
   "turn.completed",
   "turn.failed",
   "turn.cancelled",
+  "turn.retrying",
 ]);
 
 const SUPPRESSED_TYPES = new Set([

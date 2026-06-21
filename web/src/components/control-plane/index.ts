@@ -25,4 +25,6 @@ export { FileChangePanel } from "./FileChangePanel";
 export type { FileChangePanelProps } from "./FileChangePanel";
 export { ControlPlaneTopBar } from "./ControlPlaneTopBar";
 export type { ControlPlaneTopBarProps } from "./ControlPlaneTopBar";
+export { ErrorBanner } from "./ErrorBanner";
+export type { ErrorBannerProps, ErrorBannerSource } from "./ErrorBanner";
 

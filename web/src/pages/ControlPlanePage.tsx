@@ -13,8 +13,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AnimatePresence } from "motion/react";
-import { fetchJSON } from "@/lib/api";
-import { useSessions, useEventStream, useApprovals } from "@/hooks/control-plane";
+import { useSessions, useEventStream, useApprovals, useTurnFailureBanner } from "@/hooks/control-plane";
 import {
   SessionCard,
   CreateSessionForm,
@@ -23,6 +22,7 @@ import {
   ApprovalCard,
   WsStatusBadge,
   ErrorToast,
+  ErrorBanner,
   FileChangePanel,
   ControlPlaneTopBar,
 } from "@/components/control-plane";
@@ -72,21 +72,92 @@ export default function ControlPlanePage() {
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
 
+  // 错误恢复 banner（事件态 turn.failed + API 态 503 等）
+  const {
+    eventBanner,
+    apiBanner,
+    dismissEventBanner,
+    setApiBanner,
+  } = useTurnFailureBanner(events);
+
   const sendTurn = async () => {
     if (!selectedSid || !prompt.trim()) return;
     setSending(true);
     try {
-      await fetchJSON(`/control-plane/sessions/${selectedSid}/turns`, {
+      const res = await fetch(`/control-plane/sessions/${selectedSid}/turns`, {
         method: "POST",
         body: JSON.stringify({ prompt: prompt.trim() }),
         headers: { "Content-Type": "application/json" },
       });
+      if (!res.ok) {
+        // 拉错误 detail；503 provider_unavailable 走专用文案
+        const text = await res.text();
+        let detail: Record<string, unknown> | null = null;
+        try {
+          const parsed: unknown = JSON.parse(text);
+          if (parsed && typeof parsed === "object") {
+            detail = parsed as Record<string, unknown>;
+          }
+        } catch {
+          /* ignore */
+        }
+        const innerCandidate =
+          (detail?.detail && typeof detail.detail === "object"
+            ? (detail.detail as Record<string, unknown>)
+            : null) ??
+          (detail?.error &&
+          typeof detail.error === "object" &&
+          (detail.error as Record<string, unknown>).detail &&
+          typeof (detail.error as Record<string, unknown>).detail === "object"
+            ? ((detail.error as Record<string, unknown>).detail as Record<string, unknown>)
+            : null);
+        const innerCode =
+          innerCandidate && typeof innerCandidate.code === "string"
+            ? innerCandidate.code
+            : null;
+        const innerKind =
+          innerCandidate && typeof innerCandidate.kind === "string"
+            ? innerCandidate.kind
+            : null;
+        const innerMessage =
+          innerCandidate && typeof innerCandidate.message === "string"
+            ? innerCandidate.message
+            : null;
+        const innerHint =
+          innerCandidate && typeof innerCandidate.hint === "string"
+            ? innerCandidate.hint
+            : null;
+        if (res.status === 503 && innerCode === "provider_unavailable") {
+          setApiBanner({
+            title: "Provider unavailable",
+            code: innerKind ? `provider:${innerKind}` : "provider_unavailable",
+            message: innerMessage || "Provider is currently unavailable.",
+            hint: innerHint || undefined,
+          });
+        } else {
+          setApiBanner({
+            title: `Failed to start turn (${res.status})`,
+            message: text.slice(0, 500) || "Unknown error.",
+          });
+        }
+        return;
+      }
       setPrompt("");
-    } catch {
-      // error already surfaced via eventsError if needed
+      setApiBanner(null);
+    } catch (e) {
+      setApiBanner({
+        title: "Network error",
+        message: (e as Error).message || "Could not reach the daemon.",
+      });
     } finally {
       setSending(false);
     }
+  };
+
+  const retryFromBanner = () => {
+    // 重试就是把上一条 prompt 再发一次。空 prompt 时不动作。
+    if (!prompt.trim()) return;
+    void sendTurn();
   };
 
   const handleDelete = (sid: string) => {
@@ -106,6 +177,31 @@ export default function ControlPlanePage() {
       }}
     >
       <ControlPlaneTopBar />
+      <AnimatePresence initial={false}>
+        {apiBanner && (
+          <ErrorBanner
+            key={`api-banner`}
+            source="api"
+            title={apiBanner.title}
+            code={apiBanner.code}
+            message={apiBanner.message}
+            hint={apiBanner.hint}
+            onRetry={prompt.trim() ? retryFromBanner : undefined}
+            onDismiss={() => setApiBanner(null)}
+          />
+        )}
+        {!apiBanner && eventBanner && (
+          <ErrorBanner
+            key={`evt-${eventBanner.eventId}`}
+            source="event"
+            title={eventBanner.title}
+            code={eventBanner.code}
+            message={eventBanner.message}
+            retryable={eventBanner.retryable}
+            onDismiss={dismissEventBanner}
+          />
+        )}
+      </AnimatePresence>
       <div
         style={{
           display: "grid",

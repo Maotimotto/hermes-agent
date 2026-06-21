@@ -28,3 +28,9 @@ export type {
   UseSessionsHistoryResult,
   StatusFilter,
 } from "./useSessionsHistory";
+export { useTurnFailureBanner } from "./useTurnFailureBanner";
+export type {
+  TurnFailureBannerEvent,
+  TurnFailureBannerApi,
+  UseTurnFailureBannerResult,
+} from "./useTurnFailureBanner";

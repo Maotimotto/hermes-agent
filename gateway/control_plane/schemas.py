@@ -146,6 +146,23 @@ class ProviderListResponse(BaseModel):
     providers: list[ProviderInfo]
 
 
+class ProviderStatusChangeItem(BaseModel):
+    """GET /providers/{kind}/history 列表项。"""
+
+    kind: str
+    from_available: bool | None = None     # None = 第一次探活
+    to_available: bool
+    message: str = ""
+    at: str = ""                            # ISO timestamp
+
+
+class ProviderStatusHistoryResponse(BaseModel):
+    """GET /providers/{kind}/history 响应。"""
+
+    kind: str
+    history: list[ProviderStatusChangeItem]
+
+
 # ── Workspace schemas ───────────────────────────────────────────────────────
 
 

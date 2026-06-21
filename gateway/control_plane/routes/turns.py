@@ -100,6 +100,37 @@ async def create_turn(
     if rec is None:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
 
+    # Wave C of 错误恢复: provider 健康门禁。
+    # 在创建 turn 之前先看 monitor 的最新快照。如果 provider 已知不可用，
+    # 直接 503 + 友好 message（并把 history 里最近一次 message 也带回，方便
+    # 前端的 ErrorBanner 直接渲染）— 比让 turn 启动后再 turn.failed 体感好。
+    kind_for_check = (
+        state.runtime_registry.get_session_runtime(session_id) or rec.runtime_kind
+    )
+    monitor = state.provider_health
+    if monitor is not None and kind_for_check:
+        snap = monitor.snapshot(kind_for_check)
+        # 门禁规则：仅当 health_check 正常返回了 available=False 才拦截。
+        # 探活本身抛异常（snap.error 非空）视作「未知」放行 — 否则 health_check
+        # 自己有 bug 就会让所有 turn 创建瘫痪。让 turn 启动后再失败反而更可观察。
+        if snap is not None and not snap.available and snap.error is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "provider_unavailable",
+                    "kind": kind_for_check,
+                    "message": (
+                        snap.message
+                        or f"Provider {kind_for_check} is currently unavailable."
+                    ),
+                    "checked_at": snap.checked_at,
+                    "hint": (
+                        "请检查该 provider 的配置（API key / CLI 安装 / 网络可达性）"
+                        "，或切换到可用的 provider 后重试。"
+                    ),
+                },
+            )
+
     tid = new_turn_id()
 
     # Insert turn record for FK constraint

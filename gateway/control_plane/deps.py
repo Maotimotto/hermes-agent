@@ -27,6 +27,7 @@ from agent.control_plane.store import (
 )
 from agent.control_plane.workspace import InMemoryWorkspaceStore, WorkspaceManager
 from agent.control_plane.runtimes.interface import AgentRuntime, HealthStatus
+from agent.control_plane.provider_health import ProviderHealthMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,9 @@ class AppState:
         # ApprovalGate is created lazily after the store finishes init —
         # see ``ensure_approval_gate`` below (called from app lifespan).
         self.approval_gate: ApprovalGate | None = None
+        # ProviderHealthMonitor — lazy init in lifespan startup, after the
+        # registry has been populated by build_default_runtimes.
+        self.provider_health: "ProviderHealthMonitor | None" = None
 
     def ensure_approval_gate(self) -> ApprovalGate:
         """Construct the ApprovalGate once the store is ready.
@@ -163,3 +167,10 @@ def get_workspace_manager(
 
 def get_approval_gate(state: AppState = Depends(get_app_state)) -> ApprovalGate:
     return state.ensure_approval_gate()
+
+
+def get_provider_health(
+    state: AppState = Depends(get_app_state),
+) -> ProviderHealthMonitor | None:
+    """返回 ProviderHealthMonitor。未启动时返回 None（路由层兜底走旧逻辑）。"""
+    return state.provider_health

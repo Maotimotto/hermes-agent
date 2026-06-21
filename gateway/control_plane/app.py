@@ -78,6 +78,16 @@ def create_control_plane_app(
     @app.on_event("shutdown")
     async def _shutdown() -> None:
         st: AppState = app.state.cp  # type: ignore[assignment]
+        # 先停健康监控（避免它在 store 关闭后还往 store 里写）
+        if st.provider_health is not None:
+            try:
+                await st.provider_health.stop()
+                logger.info("[control-plane] provider health monitor stopped")
+            except Exception as exc:  # pragma: no cover
+                logger.warning(
+                    "[control-plane] provider health monitor stop failed: %s",
+                    exc,
+                )
         if st.store is not None:
             await st.store.close()
             logger.info("[control-plane] store closed")
@@ -138,6 +148,30 @@ async def init_store(app: FastAPI) -> None:
 
     app.state._cp_initialized = True  # type: ignore[attr-defined]
     logger.info("[control-plane] store initialized (db_path=%s)", db_path or "default")
+
+    # Wave C of 错误恢复: 启动 ProviderHealthMonitor。
+    # 必须在 runtimes 注册之后；只要注册过任何 runtime 就启，否则没意义。
+    if state.runtime_registry._runtimes:
+        from agent.control_plane.provider_health import ProviderHealthMonitor
+
+        # poll_interval 可被 HERMES_HEALTH_POLL_SEC 环境变量覆盖（测试常用 0.05）
+        import os
+
+        poll_sec_str = os.environ.get("HERMES_HEALTH_POLL_SEC")
+        try:
+            poll_sec = float(poll_sec_str) if poll_sec_str else 30.0
+        except ValueError:
+            poll_sec = 30.0
+        monitor = ProviderHealthMonitor(
+            state.runtime_registry,
+            poll_interval_sec=poll_sec,
+        )
+        await monitor.start()
+        state.provider_health = monitor
+        logger.info(
+            "[control-plane] provider health monitor started (interval=%.1fs)",
+            poll_sec,
+        )
 
 
 def mount_to(

@@ -160,7 +160,7 @@ _FRIENDLY_MESSAGES = {
 }
 
 
-_DEFAULT_RETRY_AFTER_MS = {
+DEFAULT_RETRY_AFTER_MS = {
     ErrorCategory.network: 1_500,
     ErrorCategory.timeout: 2_000,
     ErrorCategory.overloaded: 3_000,
@@ -173,6 +173,9 @@ _DEFAULT_RETRY_AFTER_MS = {
     ErrorCategory.cancelled: 0,
     ErrorCategory.unknown: 0,
 }
+
+# 旧名兼容（私有别名，本模块内部仍用 _DEFAULT_RETRY_AFTER_MS）
+_DEFAULT_RETRY_AFTER_MS = DEFAULT_RETRY_AFTER_MS
 
 
 _RETRYABLE_CATEGORIES = {

@@ -467,10 +467,10 @@ class TestSpecificEventFields:
 
 
 class TestHermesEventTypes:
-    """验证 15 种事件类型集合。"""
+    """验证 16 种事件类型集合（V1.1 错误恢复 Wave B 加入 turn.retrying）。"""
 
-    def test_count_is_15(self):
-        assert len(HERMES_EVENT_TYPES) == 15
+    def test_count_is_16(self):
+        assert len(HERMES_EVENT_TYPES) == 16
 
     def test_contains_all_types(self):
         expected = {
@@ -478,6 +478,7 @@ class TestHermesEventTypes:
             "turn.started",
             "turn.completed",
             "turn.failed",
+            "turn.retrying",
             "turn.cancelled",
             "assistant.delta",
             "assistant.message",

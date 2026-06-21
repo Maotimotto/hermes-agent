@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from agent.control_plane.error_recovery import classify_runtime_error
 from agent.control_plane.ids import new_turn_id
 from agent.control_plane.runtimes.interface import TurnInput
 from agent.control_plane.store import SessionStore
@@ -35,6 +36,30 @@ from gateway.control_plane.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["turns"])
+
+# 一个 turn 最多自动重试一次（P1 清单：「Turn 失败后的自动重试（最多 1 次）」）。
+# 即首次失败若 retryable=True，再起一次；第二次仍失败则发 turn.failed 终止。
+MAX_TURN_ATTEMPTS = 2
+
+TERMINAL_EVENT_TYPES = {"turn.completed", "turn.failed", "turn.cancelled"}
+
+
+def _backoff_for_code(code: str) -> int:
+    """根据 runtime 上报的 error code 查默认退避时长（毫秒）。
+
+    与 error_recovery._DEFAULT_RETRY_AFTER_MS 保持一致；用一个独立 helper
+    是因为 runtime 已自行分类、上报了 code，路由层无需再 classify_runtime_error
+    就能拿到退避时长。
+    """
+    from agent.control_plane.error_recovery import (
+        DEFAULT_RETRY_AFTER_MS,
+        ErrorCategory,
+    )
+
+    try:
+        return DEFAULT_RETRY_AFTER_MS.get(ErrorCategory(code), 0)
+    except ValueError:
+        return 0
 
 
 async def _insert_turn_record(store: SessionStore, turn_id: str, session_id: str, prompt: str) -> None:
@@ -97,48 +122,134 @@ async def create_turn(
             metadata=body.metadata,
         )
 
-        TERMINAL = {"turn.completed", "turn.failed", "turn.cancelled"}
-
         async def _run_turn() -> None:
-            saw_terminal = False
+            """运行 turn，遇可重试错误自动重试一次。
+
+            重试触发条件（任一）：
+              1) runtime 主动 yield TurnFailedEvent（claude/codex runtime 都走这条路径）
+              2) start_turn() 异步迭代抛 Python 异常（路由层兜底）
+
+            两种情况都用 ClassifiedError.retryable 判定；首次失败若 retryable
+            则吞掉 turn.failed、补发 turn.retrying、退避后再起；重试再失败
+            则把第二次的 turn.failed 透传上去终止。
+            """
+            attempt = 1
+            while True:
+                turn_failed_payload: dict[str, Any] | None = None
+                python_exc: BaseException | None = None
+                saw_terminal = False
+                try:
+                    async for event in runtime.start_turn(session_id, turn_input):
+                        event_dict = event.model_dump(mode="json")
+                        # Force IDs to control-plane values (runtime may have
+                        # stashed provider-specific ids that don't match our
+                        # turns.id FK).
+                        event_dict["session_id"] = session_id
+                        event_dict["turn_id"] = tid
+
+                        # 拦截 turn.failed：不立即 publish，留给重试决策
+                        if event.type == "turn.failed":
+                            turn_failed_payload = event_dict
+                            break
+
+                        if event.type in TERMINAL_EVENT_TYPES:
+                            saw_terminal = True
+                        state.event_bus.publish(session_id, event_dict)
+                except asyncio.CancelledError:
+                    if not saw_terminal:
+                        state.event_bus.publish(
+                            session_id,
+                            {
+                                "type": "turn.cancelled",
+                                "session_id": session_id,
+                                "turn_id": tid,
+                                "reason": "cancelled",
+                            },
+                        )
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("turn %s failed (attempt %d)", tid, attempt)
+                    python_exc = exc
+
+                # ── 决策：完成？重试？终止？─────────────────────
+                if turn_failed_payload is None and python_exc is None:
+                    # 正常结束（runtime 已 yield turn.completed），收工
+                    return
+
+                # 拿到一个分类结果（payload 优先；否则用 exception）
+                if turn_failed_payload is not None:
+                    code = turn_failed_payload.get("code") or ""
+                    retryable = bool(turn_failed_payload.get("retryable"))
+                    error_text = str(turn_failed_payload.get("error", ""))
+                    # runtime 已设了 retryable=None 时回退到 classifier
+                    if turn_failed_payload.get("retryable") is None and error_text:
+                        cls = classify_runtime_error(
+                            Exception(error_text), provider=kind,
+                        )
+                        retryable = cls.retryable
+                        code = code or cls.code
+                        backoff_ms = cls.retry_after_ms
+                        # 用分类器的友好文案覆盖原始 error
+                        if cls.friendly_message:
+                            turn_failed_payload["error"] = cls.friendly_message
+                            turn_failed_payload["code"] = cls.code
+                            turn_failed_payload["retryable"] = cls.retryable
+                    else:
+                        backoff_ms = _backoff_for_code(code)
+                else:
+                    cls = classify_runtime_error(python_exc, provider=kind)
+                    retryable = cls.retryable
+                    code = cls.code
+                    backoff_ms = cls.retry_after_ms
+                    turn_failed_payload = {
+                        "type": "turn.failed",
+                        "session_id": session_id,
+                        "turn_id": tid,
+                        **cls.to_event_payload(),
+                    }
+
+                # 还能再试 → 发 turn.retrying，退避，下一轮 while
+                if retryable and attempt < MAX_TURN_ATTEMPTS:
+                    state.event_bus.publish(
+                        session_id,
+                        {
+                            "type": "turn.retrying",
+                            "session_id": session_id,
+                            "turn_id": tid,
+                            "attempt": attempt + 1,
+                            "reason": code,
+                            "backoff_ms": backoff_ms,
+                        },
+                    )
+                    if backoff_ms > 0:
+                        try:
+                            await asyncio.sleep(backoff_ms / 1000)
+                        except asyncio.CancelledError:
+                            # 退避期间用户取消
+                            state.event_bus.publish(
+                                session_id,
+                                {
+                                    "type": "turn.cancelled",
+                                    "session_id": session_id,
+                                    "turn_id": tid,
+                                    "reason": "cancelled",
+                                },
+                            )
+                            return
+                    attempt += 1
+                    continue
+
+                # 不重试 / 已达上限 → 透传 turn.failed
+                state.event_bus.publish(session_id, turn_failed_payload)
+                return
+
+        async def _run_turn_with_cleanup() -> None:
             try:
-                async for event in runtime.start_turn(session_id, turn_input):
-                    event_dict = event.model_dump(mode="json")
-                    # Force IDs to control-plane values (runtime may have
-                    # stashed provider-specific ids that don't match our
-                    # turns.id FK).
-                    event_dict["session_id"] = session_id
-                    event_dict["turn_id"] = tid
-                    if event.type in TERMINAL:
-                        saw_terminal = True
-                    state.event_bus.publish(session_id, event_dict)
-            except asyncio.CancelledError:
-                if not saw_terminal:
-                    state.event_bus.publish(
-                        session_id,
-                        {
-                            "type": "turn.cancelled",
-                            "session_id": session_id,
-                            "turn_id": tid,
-                            "reason": "cancelled",
-                        },
-                    )
-            except Exception as exc:
-                logger.exception("turn %s failed", tid)
-                if not saw_terminal:
-                    state.event_bus.publish(
-                        session_id,
-                        {
-                            "type": "turn.failed",
-                            "session_id": session_id,
-                            "turn_id": tid,
-                            "error": str(exc),
-                        },
-                    )
+                await _run_turn()
             finally:
                 state.runtime_registry.remove_turn(tid)
 
-        task = asyncio.create_task(_run_turn())
+        task = asyncio.create_task(_run_turn_with_cleanup())
         state.runtime_registry.register_turn(tid, session_id, task)
     else:
         # No runtime registered — emit synthetic turn.started so the WS

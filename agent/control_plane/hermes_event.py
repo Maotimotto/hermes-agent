@@ -72,6 +72,24 @@ class TurnFailedEvent(BaseEvent):
     retryable: bool | None = None
 
 
+class TurnRetryingEvent(BaseEvent):
+    """turn 生命周期 — 自动重试中（V1.1 错误恢复 Wave B 新增）。
+
+    在 turn 第一次失败后、第二次启动前发出，让前端能在 UI 上呈现
+    「重试中…」状态而不是直接红字。
+
+    字段：
+      attempt: 即将发起的尝试序号（1 = 首次，2 = 第一次重试）
+      reason: 来自 ClassifiedError.code（network/timeout/...）
+      backoff_ms: 等待多少毫秒后重试
+    """
+
+    type: Literal["turn.retrying"] = "turn.retrying"
+    attempt: int = 2
+    reason: str = ""
+    backoff_ms: int = 0
+
+
 class TurnCancelledEvent(BaseEvent):
     """turn 生命周期 — 用户主动取消 turn。"""
 
@@ -192,6 +210,7 @@ HermesEvent = Annotated[
         TurnStartedEvent,
         TurnCompletedEvent,
         TurnFailedEvent,
+        TurnRetryingEvent,
         TurnCancelledEvent,
         AssistantDeltaEvent,
         AssistantMessageEvent,
@@ -212,6 +231,7 @@ HERMES_EVENT_TYPES: set[str] = {
     "turn.started",
     "turn.completed",
     "turn.failed",
+    "turn.retrying",
     "turn.cancelled",
     "assistant.delta",
     "assistant.message",
@@ -322,6 +342,25 @@ def make_turn_cancelled(
         turn_id=turn_id,
         seq=seq,
         reason=reason,
+    )
+
+
+def make_turn_retrying(
+    session_id: str,
+    turn_id: str,
+    *,
+    attempt: int = 2,
+    reason: str = "",
+    backoff_ms: int = 0,
+    seq: int = 0,
+) -> TurnRetryingEvent:
+    return TurnRetryingEvent(
+        session_id=session_id,
+        turn_id=turn_id,
+        seq=seq,
+        attempt=attempt,
+        reason=reason,
+        backoff_ms=backoff_ms,
     )
 
 

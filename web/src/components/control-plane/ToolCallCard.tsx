@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { XtermViewer } from "./XtermViewer";
 
 export type ToolStatus = "running" | "ok" | "error";
 
@@ -36,6 +37,7 @@ export type ToolCallCardProps = {
 
 export function ToolCallCard({ group }: ToolCallCardProps) {
   const [open, setOpen] = useState(false);
+  const [termMode, setTermMode] = useState(false);
   const meta = STATUS_ICON[group.status];
 
   return (
@@ -148,24 +150,47 @@ export function ToolCallCard({ group }: ToolCallCardProps) {
                 </Section>
               )}
               {group.output && (
-                <Section label="output">
-                  <pre
-                    style={{
-                      margin: 0,
-                      padding: "8px 10px",
-                      background: "color-mix(in srgb, #000 30%, var(--background-base, #041c1c))",
-                      borderRadius: 4,
-                      fontSize: 11,
-                      lineHeight: 1.5,
-                      color: "#e6e6e6",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      maxHeight: 280,
-                      overflow: "auto",
-                    }}
-                  >
-                    {group.output}
-                  </pre>
+                <Section
+                  label="output"
+                  rightSlot={
+                    <button
+                      onClick={() => setTermMode((m) => !m)}
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 6px",
+                        background: "transparent",
+                        border: "1px solid var(--color-text-secondary, #6b7280)",
+                        borderRadius: 3,
+                        color: "var(--color-text-secondary, #6b7280)",
+                        cursor: "pointer",
+                      }}
+                      title={termMode ? "切回文本视图" : "用 xterm 渲染（保留 ANSI 颜色）"}
+                    >
+                      {termMode ? "📄 文本" : "📺 终端"}
+                    </button>
+                  }
+                >
+                  {termMode ? (
+                    <XtermViewer data={group.output} height={280} />
+                  ) : (
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: "8px 10px",
+                        background: "color-mix(in srgb, #000 30%, var(--background-base, #041c1c))",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        lineHeight: 1.5,
+                        color: "#e6e6e6",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        maxHeight: 280,
+                        overflow: "auto",
+                      }}
+                    >
+                      {group.output}
+                    </pre>
+                  )}
                 </Section>
               )}
               {group.error && (
@@ -192,11 +217,22 @@ export function ToolCallCard({ group }: ToolCallCardProps) {
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label,
+  children,
+  rightSlot,
+}: {
+  label: string;
+  children: React.ReactNode;
+  rightSlot?: React.ReactNode;
+}) {
   return (
     <div style={{ marginTop: 8 }}>
       <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
           fontSize: 10,
           letterSpacing: 0.5,
           textTransform: "uppercase",
@@ -204,7 +240,8 @@ function Section({ label, children }: { label: string; children: React.ReactNode
           marginBottom: 4,
         }}
       >
-        {label}
+        <span>{label}</span>
+        {rightSlot}
       </div>
       {children}
     </div>

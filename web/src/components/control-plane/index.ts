@@ -27,6 +27,8 @@ export { ControlPlaneTopBar } from "./ControlPlaneTopBar";
 export type { ControlPlaneTopBarProps } from "./ControlPlaneTopBar";
 export { ErrorBanner } from "./ErrorBanner";
 export type { ErrorBannerProps, ErrorBannerSource } from "./ErrorBanner";
+export { XtermViewer } from "./XtermViewer";
+export type { XtermViewerProps } from "./XtermViewer";
 export { DiffPanel } from "./DiffPanel";
 export type { DiffPanelProps } from "./DiffPanel";
 

@@ -36,3 +36,10 @@ export type {
 } from "./useTurnFailureBanner";
 export { useWorkspaceDiff } from "./useWorkspaceDiff";
 export type { DiffFileEntry, UseWorkspaceDiffResult } from "./useWorkspaceDiff";
+export { useHandoffs } from "./useHandoffs";
+export type {
+  HandoffRecord,
+  CreateHandoffInput,
+  CreateHandoffResponse,
+  UseHandoffsReturn,
+} from "./useHandoffs";

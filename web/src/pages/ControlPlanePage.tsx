@@ -25,6 +25,7 @@ import {
   ErrorBanner,
   FileChangePanel,
   DiffPanel,
+  TemplatePicker,
   ControlPlaneTopBar,
 } from "@/components/control-plane";
 
@@ -342,6 +343,11 @@ export default function ControlPlanePage() {
           <EventTimeline events={events} hasSelection={!!selectedSid} />
         </div>
 
+        {selectedSid && (
+          <div style={{ padding: "6px 10px 0" }}>
+            <TemplatePicker onUse={(text) => setPrompt(text)} />
+          </div>
+        )}
         {selectedSid && (
           <ChatComposer
             value={prompt}

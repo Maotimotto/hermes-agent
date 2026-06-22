@@ -168,12 +168,15 @@ async def get_session(
 @router.get("", response_model=SessionListResponse)
 async def list_sessions(
     status: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     store: SessionStore = Depends(get_store),
 ) -> SessionListResponse:
     """List sessions with optional status filter and pagination."""
-    sessions = await store.list_sessions(status=status, limit=limit, offset=offset)
+    sessions = await store.list_sessions(
+        status=status, q=q, limit=limit, offset=offset
+    )
     return SessionListResponse(
         sessions=[_session_to_response(s) for s in sessions],
         total=len(sessions),  # NOTE: not a global total; paginated window

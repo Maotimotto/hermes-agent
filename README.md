@@ -19,6 +19,42 @@
 
 Use any model you want — [Nous Portal](https://portal.nousresearch.com), [OpenRouter](https://openrouter.ai) (200+ models), [NovitaAI](https://novita.ai) (AI-native cloud for Model API, Agent Sandbox, and GPU Cloud), [NVIDIA NIM](https://build.nvidia.com) (Nemotron), [Xiaomi MiMo](https://platform.xiaomimimo.com), [z.ai/GLM](https://z.ai), [Kimi/Moonshot](https://platform.moonshot.ai), [MiniMax](https://www.minimax.io), [Hugging Face](https://huggingface.co), OpenAI, or your own endpoint. Switch with `hermes model` — no code changes, no lock-in.
 
+---
+
+## 🛠 Fork: Hermes Control Plane (V1.0.0)
+
+> 这是 [Maotimotto/hermes-agent](https://github.com/Maotimotto/hermes-agent) 维护的 fork，主线分支 **`v1.0.0-control-plane`** 在上游核心之外**新增了一套 Web 控制台**，用来对 Claude Code / Codex 这类外部 Coding Agent 做编排、审批、回放与人机协作。
+
+```bash
+git clone -b v1.0.0-control-plane git@github.com:Maotimotto/hermes-agent.git
+```
+
+**已交付（P1 全完成）：**
+
+| 模块 | 概要 |
+| --- | --- |
+| **Provider 配置页** | 在 Web UI 配置 Claude / Codex Provider，持久化到 `~/.hermes/config.json` |
+| **Diff 面板** | 工作区 `GET /diff` + 自实现 unified diff 渲染、行号、Split/Unified 切换、A/M/D 状态过滤、路径模糊搜索、一键导出 `.patch` |
+| **基础错误恢复** | Turn 级自动重试（9 类 `ErrorCategory`，分级退避）、`ProviderHealthMonitor` 周期 probe、provider 不可用时 503 + 友好提示 + 前端 `ErrorBanner` |
+| **日志导出** | Session 一键导出 JSON / Markdown，含事件、审批、文件变更 |
+| **任务模板** | 内置 3 套预设 prompt，`{var}` 占位符参数化，模板存储 + `TemplatePicker` UI |
+| **Provider 转交** | Claude ↔ Codex 双向手动转交：打包上下文 → 新 session 续跑，`HandoffPanel` 记录历史 |
+| **xterm 终端模拟** | `ToolCallCard` 输出可切换 xterm.js 终端模式，保留 ANSI 颜色 |
+| **Session 搜索** | `GET /control-plane/sessions?q=…` 大小写不敏感，匹配 session id / metadata / `turns.prompt`（EXISTS 子查询），前端 300ms debounce 输入框 |
+| **Dark / Light 主题切换** | `lib/theme.ts` + `ThemeToggle` SVG 月亮/太阳，`[data-theme="light"]` token 覆盖（暖白 `#f5f5f7` / 暖黑 `#1d1d1f`），首屏 `applyTheme` 防 flash，跟随 `prefers-color-scheme` |
+
+**测试基线：** `tests/control_plane/` **480 passed, 2 skipped**。
+
+**架构入口：**
+
+- 后端 — `gateway/control_plane/`（FastAPI 路由）+ `agent/control_plane/`（store、provider health、error recovery、handoff）
+- 前端 — `web/src/pages/ControlPlanePage.tsx` + `web/src/components/control-plane/` + `web/src/hooks/control-plane/`
+- 数据 — SQLite，schema 见 `agent/control_plane/store/migrations/001_init.sql`（sessions / turns / events / approvals / workspaces / handoffs / templates）
+
+> 路书 + ADR 在 [Maotimotto/control-center](https://github.com/Maotimotto/control-center)（`实现路书/checklists/p1-checklist.md`）。
+
+---
+
 <table>
 <tr><td><b>A real terminal interface</b></td><td>Full TUI with multiline editing, slash-command autocomplete, conversation history, interrupt-and-redirect, and streaming tool output.</td></tr>
 <tr><td><b>Lives where you do</b></td><td>Telegram, Discord, Slack, WhatsApp, Signal, and CLI — all from a single gateway process. Voice memo transcription, cross-platform conversation continuity.</td></tr>

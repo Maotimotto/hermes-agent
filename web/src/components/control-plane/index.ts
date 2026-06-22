@@ -31,4 +31,6 @@ export { XtermViewer } from "./XtermViewer";
 export type { XtermViewerProps } from "./XtermViewer";
 export { DiffPanel } from "./DiffPanel";
 export type { DiffPanelProps } from "./DiffPanel";
+export { ExportButton } from "./ExportButton";
+export type { ExportButtonProps } from "./ExportButton";
 

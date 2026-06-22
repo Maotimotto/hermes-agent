@@ -29,6 +29,7 @@ import type {
   ThemeTypography,
 } from "./types";
 import { api } from "@/lib/api";
+import { applyTheme as applyThemeMode, getInitialTheme } from "@/lib/theme";
 
 /** LocalStorage key — pre-applied before the React tree mounts to avoid
  *  a visible flash of the default palette on theme-overridden installs. */
@@ -397,8 +398,12 @@ function applyTheme(theme: DashboardTheme) {
     theme.terminalBackground ?? "#000000",
   );
 
-  // Re-assert the font override last: theme application just rewrote
-  // --theme-font-sans/-display, so an active override has to win again.
+  // Dashboard themes write inline root vars; re-assert the console color mode
+  // so data-theme light/dark remains independent from dashboard theme choice.
+  applyThemeMode(getInitialTheme());
+
+  // Re-assert the font override last: theme application and color mode just
+  // rewrote --theme-font-sans/-display, so an active override has to win again.
   applyFontOverride(_ACTIVE_FONT_OVERRIDE);
 }
 

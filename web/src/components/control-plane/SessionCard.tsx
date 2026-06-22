@@ -25,7 +25,11 @@ export function SessionCard({
 }: SessionCardProps) {
   const [hover, setHover] = useState(false);
   const canDelete = selected && session.status !== "stopped";
-  const bg = selected ? "#eff6ff" : hover ? "#f9fafb" : "white";
+  const bg = selected
+    ? "color-mix(in srgb, var(--color-primary) 14%, var(--color-card))"
+    : hover
+      ? "var(--color-muted)"
+      : "var(--color-card)";
 
   return (
     <motion.div
@@ -39,9 +43,10 @@ export function SessionCard({
       onMouseLeave={() => setHover(false)}
       style={{
         padding: "10px 12px",
-        borderBottom: "1px solid #f3f4f6",
+        borderBottom: "1px solid var(--color-border)",
         cursor: "pointer",
         background: bg,
+        color: "var(--color-card-foreground)",
         position: "relative",
       }}
     >
@@ -56,21 +61,21 @@ export function SessionCard({
         <span>{session.id.slice(0, 16)}</span>
         <span
           style={{
-            color: STATUS_COLORS[session.status] || "#6b7280",
+            color: STATUS_COLORS[session.status] || "var(--color-muted-foreground)",
             fontWeight: 600,
           }}
         >
           {session.status}
         </span>
       </div>
-      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+      <div style={{ fontSize: 12, color: "var(--color-muted-foreground)", marginTop: 4 }}>
         {session.runtime_kind} · {session.model}
       </div>
       {session.repo_path && (
         <div
           style={{
             fontSize: 11,
-            color: "#9ca3af",
+            color: "var(--color-muted-foreground)",
             marginTop: 2,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -78,7 +83,7 @@ export function SessionCard({
           }}
           title={session.repo_path}
         >
-          📁 {session.repo_path}
+          repo: {session.repo_path}
         </div>
       )}
       {canDelete && (
@@ -95,7 +100,7 @@ export function SessionCard({
             width: 22,
             height: 22,
             border: "1px solid #fca5a5",
-            background: "white",
+            background: "var(--color-card)",
             color: "#ef4444",
             borderRadius: 4,
             cursor: "pointer",

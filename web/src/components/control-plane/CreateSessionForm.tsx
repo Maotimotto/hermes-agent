@@ -19,8 +19,10 @@ const FIELD_STYLE: React.CSSProperties = {
   marginTop: 4,
   padding: "4px 6px",
   fontSize: 12,
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--color-input)",
   borderRadius: 4,
+  background: "var(--color-card)",
+  color: "var(--color-card-foreground)",
   boxSizing: "border-box",
 };
 
@@ -50,14 +52,14 @@ export function CreateSessionForm({
     <div
       style={{
         padding: 12,
-        background: "#f9fafb",
-        borderBottom: "1px solid #e5e7eb",
+        background: "var(--color-secondary)",
+        borderBottom: "1px solid var(--color-border)",
         display: "flex",
         flexDirection: "column",
         gap: 8,
       }}
     >
-      <label style={{ fontSize: 12, color: "#374151" }}>
+      <label style={{ fontSize: 12, color: "var(--color-card-foreground)" }}>
         Runtime
         <select
           value={runtime}
@@ -70,7 +72,7 @@ export function CreateSessionForm({
           <option value="codex">codex</option>
         </select>
       </label>
-      <label style={{ fontSize: 12, color: "#374151" }}>
+      <label style={{ fontSize: 12, color: "var(--color-card-foreground)" }}>
         Model
         <input
           value={model}
@@ -78,7 +80,7 @@ export function CreateSessionForm({
           style={FIELD_STYLE}
         />
       </label>
-      <label style={{ fontSize: 12, color: "#374151" }}>
+      <label style={{ fontSize: 12, color: "var(--color-card-foreground)" }}>
         Repo path (optional)
         <input
           value={repoPath}
@@ -94,8 +96,10 @@ export function CreateSessionForm({
           style={{
             flex: 1,
             padding: "6px 10px",
-            background: submitting ? "#9ca3af" : "#10b981",
-            color: "white",
+            background: submitting
+              ? "color-mix(in srgb, var(--color-muted-foreground) 55%, transparent)"
+              : "#10b981",
+            color: "var(--color-primary-foreground)",
             border: "none",
             borderRadius: 4,
             cursor: submitting ? "not-allowed" : "pointer",
@@ -110,9 +114,9 @@ export function CreateSessionForm({
           style={{
             flex: 1,
             padding: "6px 10px",
-            background: "white",
-            color: "#374151",
-            border: "1px solid #d1d5db",
+            background: "var(--color-card)",
+            color: "var(--color-card-foreground)",
+            border: "1px solid var(--color-border)",
             borderRadius: 4,
             cursor: submitting ? "not-allowed" : "pointer",
             fontSize: 12,

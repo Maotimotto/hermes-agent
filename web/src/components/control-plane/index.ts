@@ -23,6 +23,7 @@ export { WsStatusBadge } from "./WsStatusBadge";
 export type { WsStatusBadgeProps } from "./WsStatusBadge";
 export { ControlPlaneTopBar } from "./ControlPlaneTopBar";
 export type { ControlPlaneTopBarProps } from "./ControlPlaneTopBar";
+export { ThemeToggle } from "./ThemeToggle";
 export { ErrorBanner } from "./ErrorBanner";
 export type { ErrorBannerProps, ErrorBannerSource } from "./ErrorBanner";
 export { XtermViewer } from "./XtermViewer";

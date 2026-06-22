@@ -181,6 +181,8 @@ export default function ControlPlanePage() {
         flexDirection: "column",
         height: "calc(100vh - 60px)",
         boxSizing: "border-box",
+        background: "var(--background-base)",
+        color: "var(--color-card-foreground)",
       }}
     >
       <ControlPlaneTopBar />
@@ -223,8 +225,9 @@ export default function ControlPlanePage() {
       {/* ── 左：sessions ───────────────────────── */}
       <section
         style={{
-          border: "1px solid #e5e7eb",
+          border: "1px solid var(--color-border)",
           borderRadius: 8,
+          background: "var(--color-card)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
@@ -233,7 +236,7 @@ export default function ControlPlanePage() {
         <header
           style={{
             padding: "10px 12px",
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: "1px solid var(--color-border)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -247,10 +250,10 @@ export default function ControlPlanePage() {
               style={{
                 fontSize: 12,
                 padding: "4px 8px",
-                border: "1px solid #3b82f6",
+                border: "1px solid var(--color-primary)",
                 borderRadius: 4,
-                background: "#3b82f6",
-                color: "white",
+                background: "var(--color-primary)",
+                color: "var(--color-primary-foreground)",
                 cursor: "pointer",
               }}
             >
@@ -262,9 +265,10 @@ export default function ControlPlanePage() {
               style={{
                 fontSize: 12,
                 padding: "4px 8px",
-                border: "1px solid #d1d5db",
+                border: "1px solid var(--color-border)",
                 borderRadius: 4,
-                background: "white",
+                background: "var(--color-secondary)",
+                color: "var(--color-secondary-foreground)",
                 cursor: "pointer",
               }}
             >
@@ -358,7 +362,7 @@ export default function ControlPlanePage() {
 
         <div style={{ flex: 1, overflow: "auto" }}>
           {sessions.length === 0 && (
-            <div style={{ padding: 12, color: "#9ca3af", fontSize: 13 }}>
+            <div style={{ padding: 12, color: "var(--color-muted-foreground)", fontSize: 13 }}>
               {loading ? "Loading…" : sessionsEmptyText}
             </div>
           )}
@@ -379,14 +383,15 @@ export default function ControlPlanePage() {
       {/* ── 中：events ─────────────────────────── */}
       <section
         style={{
-          border: "1px solid #e5e7eb",
+          border: "1px solid var(--color-border)",
           borderRadius: 8,
+          background: "var(--color-card)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <header style={{ padding: "10px 12px", borderBottom: "1px solid #e5e7eb" }}>
+        <header style={{ padding: "10px 12px", borderBottom: "1px solid var(--color-border)" }}>
           <strong>Events</strong>
           {selectedSid && (
             <span
@@ -394,7 +399,7 @@ export default function ControlPlanePage() {
                 marginLeft: 8,
                 fontFamily: "monospace",
                 fontSize: 12,
-                color: "#6b7280",
+                color: "var(--color-muted-foreground)",
               }}
             >
               {selectedSid}
@@ -456,22 +461,23 @@ export default function ControlPlanePage() {
       {/* ── 右：approvals ──────────────────────── */}
       <section
         style={{
-          border: "1px solid #e5e7eb",
+          border: "1px solid var(--color-border)",
           borderRadius: 8,
+          background: "var(--color-card)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <header style={{ padding: "10px 12px", borderBottom: "1px solid #e5e7eb" }}>
+        <header style={{ padding: "10px 12px", borderBottom: "1px solid var(--color-border)" }}>
           <strong>Pending Approvals</strong>
-          <span style={{ marginLeft: 8, color: "#6b7280", fontSize: 12 }}>
+          <span style={{ marginLeft: 8, color: "var(--color-muted-foreground)", fontSize: 12 }}>
             ({approvals.length})
           </span>
         </header>
         <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
           {approvals.length === 0 && (
-            <div style={{ color: "#9ca3af", padding: 8, fontSize: 13 }}>
+            <div style={{ color: "var(--color-muted-foreground)", padding: 8, fontSize: 13 }}>
               No pending approvals.
             </div>
           )}

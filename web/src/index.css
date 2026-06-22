@@ -76,7 +76,7 @@
   --theme-font-display: var(--theme-font-sans);
   --theme-base-size: 15px;
   --theme-line-height: 1.55;
-  --theme-letter-spacing: 0;
+  --theme-letter-spacing: -0.022em;
 
   /* Layout tokens. */
   --radius: 0.5rem;
@@ -92,6 +92,42 @@
      these as `--series-input-token` / `--series-output-token`. */
   --series-input-token: #ffe6cb;
   --series-output-token: #34d399;
+}
+
+:root[data-theme="light"] {
+  --foreground: color-mix(in srgb, #1d1d1f 100%, transparent);
+  --foreground-base: #1d1d1f;
+  --foreground-alpha: 1;
+  --midground: color-mix(in srgb, #1d1d1f 100%, transparent);
+  --midground-base: #1d1d1f;
+  --midground-alpha: 1;
+  --background: color-mix(in srgb, #f5f5f7 100%, transparent);
+  --background-base: #f5f5f7;
+  --background-alpha: 1;
+
+  --warm-glow: rgba(0, 113, 227, 0.16);
+  --noise-opacity-mul: 0.35;
+
+  --color-foreground: #1d1d1f;
+  --color-card: #ffffff;
+  --color-card-foreground: #1d1d1f;
+  --color-primary: #0071e3;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e8e8ed;
+  --color-secondary-foreground: #1d1d1f;
+  --color-muted: #ededf0;
+  --color-muted-foreground: #6e6e73;
+  --color-text-secondary: #6e6e73;
+  --color-text-tertiary: #86868b;
+  --color-accent: #e8f2ff;
+  --color-accent-foreground: #0071e3;
+  --color-border: #d2d2d7;
+  --color-input: #d2d2d7;
+  --color-ring: #0071e3;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1d1d1f;
+
+  color-scheme: light;
 }
 
 /* Theme tokens cascade into the document root so every descendant inherits
@@ -164,8 +200,8 @@ code { font-size: 0.875rem; }
 
   --color-card: color-mix(in srgb, var(--midground-base) 4%, var(--background-base));
   --color-card-foreground: var(--midground);
-  --color-primary: var(--midground);
-  --color-primary-foreground: var(--background-base);
+  --color-primary: #0071e3;
+  --color-primary-foreground: #ffffff;
   --color-secondary: color-mix(in srgb, var(--midground-base) 6%, var(--background-base));
   --color-secondary-foreground: var(--midground);
   --color-muted: color-mix(in srgb, var(--midground-base) 8%, var(--background-base));
@@ -182,7 +218,7 @@ code { font-size: 0.875rem; }
   --color-warning: #ffbd38;
   --color-border: color-mix(in srgb, var(--midground-base) 15%, transparent);
   --color-input: color-mix(in srgb, var(--midground-base) 15%, transparent);
-  --color-ring: var(--midground);
+  --color-ring: #0071e3;
   --color-popover: color-mix(in srgb, var(--midground-base) 4%, var(--background-base));
   --color-popover-foreground: var(--midground);
 
@@ -266,4 +302,3 @@ code { font-size: 0.875rem; }
 :root[style*="--theme-asset-bg:"] .theme-default-filler {
   display: none;
 }
-

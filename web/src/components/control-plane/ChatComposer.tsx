@@ -23,8 +23,8 @@ export function ChatComposer({
     <div
       style={{
         padding: 10,
-        borderTop: "1px solid #e5e7eb",
-        background: "#f9fafb",
+        borderTop: "1px solid var(--color-border)",
+        background: "var(--color-secondary)",
         display: "flex",
         gap: 8,
       }}
@@ -44,8 +44,10 @@ export function ChatComposer({
           flex: 1,
           padding: 8,
           fontSize: 13,
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--color-input)",
           borderRadius: 4,
+          background: "var(--color-card)",
+          color: "var(--color-card-foreground)",
           resize: "vertical",
           fontFamily: "inherit",
           boxSizing: "border-box",
@@ -56,8 +58,10 @@ export function ChatComposer({
         disabled={disabled}
         style={{
           padding: "0 14px",
-          background: disabled ? "#9ca3af" : "#3b82f6",
-          color: "white",
+          background: disabled
+            ? "color-mix(in srgb, var(--color-muted-foreground) 55%, transparent)"
+            : "var(--color-primary)",
+          color: "var(--color-primary-foreground)",
           border: "none",
           borderRadius: 4,
           cursor: disabled ? "not-allowed" : "pointer",

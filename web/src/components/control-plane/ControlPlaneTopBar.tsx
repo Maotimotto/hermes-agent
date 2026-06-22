@@ -18,6 +18,7 @@ import type {
   DaemonOverall,
   ProviderInfo,
 } from "@/hooks/control-plane";
+import { ThemeToggle } from "./ThemeToggle";
 
 const DAEMON_STYLES: Record<DaemonOverall, { dot: string; label: string; tone: string }> = {
   ok: { dot: "#10b981", label: "OK", tone: "#065f46" },
@@ -54,6 +55,7 @@ export function ControlPlaneTopBar({ style, trailing }: ControlPlaneTopBarProps)
       <DaemonPill overall={overall} health={health} error={error} lastOkAt={lastOkAt} />
       <div style={{ flex: 1 }} />
       {trailing}
+      <ThemeToggle />
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {providers.length === 0 && !provError && (
           <span style={{ color: "var(--color-text-secondary, #6b7280)" }}>

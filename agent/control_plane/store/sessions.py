@@ -90,20 +90,39 @@ async def list_sessions(
     driver: StoreDriver,
     *,
     status: str | None = None,
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[SessionRecord]:
+    clauses = []
+    params: list[object] = []
+
     if status:
-        rows = await driver.fetchall(
-            "SELECT * FROM sessions WHERE status = ? "
-            "ORDER BY started_at DESC LIMIT ? OFFSET ?",
-            (status, limit, offset),
+        clauses.append("status = ?")
+        params.append(status)
+
+    query = (q or "").strip()
+    if query:
+        pattern = f"%{query.lower()}%"
+        clauses.append(
+            "("
+            "LOWER(id) LIKE ? OR "
+            "LOWER(COALESCE(metadata, '')) LIKE ? OR "
+            "EXISTS ("
+            "SELECT 1 FROM turns "
+            "WHERE turns.session_id = sessions.id "
+            "AND LOWER(COALESCE(turns.prompt, '')) LIKE ?"
+            ")"
+            ")"
         )
-    else:
-        rows = await driver.fetchall(
-            "SELECT * FROM sessions ORDER BY started_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
+        params.extend([pattern, pattern, pattern])
+
+    where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
+    rows = await driver.fetchall(
+        f"SELECT * FROM sessions {where}"
+        "ORDER BY started_at DESC LIMIT ? OFFSET ?",
+        (*params, limit, offset),
+    )
     return [_row_to_session(r) for r in rows]
 
 

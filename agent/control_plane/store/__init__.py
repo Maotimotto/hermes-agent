@@ -103,11 +103,12 @@ class SessionStore:
         self,
         *,
         status: str | None = None,
+        q: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[SessionRecord]:
         return await _list_sessions(
-            self.driver, status=status, limit=limit, offset=offset
+            self.driver, status=status, q=q, limit=limit, offset=offset
         )
 
     async def update_session_status(

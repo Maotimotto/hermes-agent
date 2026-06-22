@@ -36,6 +36,8 @@ export default function ControlPlanePage() {
     sessions,
     selectedSid,
     setSelectedSid,
+    query,
+    setQuery,
     loading,
     error: sessionsError,
     refresh: refreshSessions,
@@ -170,6 +172,7 @@ export default function ControlPlanePage() {
   };
 
   const error = sessionsError || eventsError || approvalsError;
+  const sessionsEmptyText = query.trim() ? "没有匹配的 session" : "No sessions yet.";
 
   return (
     <div
@@ -280,10 +283,83 @@ export default function ControlPlanePage() {
           />
         )}
 
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid #e5e7eb" }}>
+          <div style={{ position: "relative" }}>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              style={{
+                position: "absolute",
+                left: 9,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "#6b7280",
+                pointerEvents: "none",
+              }}
+            >
+              <path
+                d="M21 21l-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索 prompt 或 session id…"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                borderRadius: 6,
+                border: "1px solid #d1d5db",
+                padding: "7px 30px 7px 30px",
+                fontSize: 13,
+                outline: "none",
+              }}
+            />
+            {query && (
+              <button
+                type="button"
+                aria-label="清空搜索"
+                onClick={() => setQuery("")}
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  border: "none",
+                  background: "transparent",
+                  color: "#6b7280",
+                  cursor: "pointer",
+                  padding: 3,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14">
+                  <path
+                    d="M18 6 6 18M6 6l12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
         <div style={{ flex: 1, overflow: "auto" }}>
           {sessions.length === 0 && (
             <div style={{ padding: 12, color: "#9ca3af", fontSize: 13 }}>
-              {loading ? "Loading…" : "No sessions yet."}
+              {loading ? "Loading…" : sessionsEmptyText}
             </div>
           )}
           <AnimatePresence initial={false}>

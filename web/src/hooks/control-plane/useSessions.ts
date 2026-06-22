@@ -23,6 +23,8 @@ export type UseSessionsResult = {
   sessions: SessionRecord[];
   selectedSid: string | null;
   setSelectedSid: (sid: string | null) => void;
+  query: string;
+  setQuery: (q: string) => void;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -30,11 +32,20 @@ export type UseSessionsResult = {
   deleteSession: (sid: string) => Promise<void>;
 };
 
-const SESSIONS_PATH = "/control-plane/sessions?limit=50";
+const DEBOUNCE_MS = 300;
+
+function sessionsPath(query: string): string {
+  const params = new URLSearchParams();
+  params.set("limit", "50");
+  const q = query.trim();
+  if (q) params.set("q", q);
+  return `/control-plane/sessions?${params.toString()}`;
+}
 
 export function useSessions(): UseSessionsResult {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [selectedSid, setSelectedSid] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +53,7 @@ export function useSessions(): UseSessionsResult {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchJSON<SessionListResponse>(SESSIONS_PATH);
+      const data = await fetchJSON<SessionListResponse>(sessionsPath(query));
       setSessions(data.sessions);
       setSelectedSid((cur) => {
         if (cur) return cur;
@@ -53,7 +64,7 @@ export function useSessions(): UseSessionsResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query]);
 
   const createSession = useCallback(
     async (input: CreateSessionInput) => {
@@ -96,15 +107,18 @@ export function useSessions(): UseSessionsResult {
   );
 
   useEffect(() => {
-    refresh();
-    // Initial mount only — explicit refresh / WS events drive subsequent loads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const timer = window.setTimeout(() => {
+      void refresh();
+    }, DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [query, refresh]);
 
   return {
     sessions,
     selectedSid,
     setSelectedSid,
+    query,
+    setQuery,
     loading,
     error,
     refresh,

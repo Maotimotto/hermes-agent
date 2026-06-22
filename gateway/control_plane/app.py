@@ -26,6 +26,7 @@ from gateway.control_plane.routes import (
     approvals,
     events,
     exports,
+    handoffs,
     health,
     providers,
     sessions,
@@ -103,6 +104,7 @@ def create_control_plane_app(
     app.include_router(workspaces.router)
     app.include_router(exports.router)
     app.include_router(templates.router)
+    app.include_router(handoffs.router)
     app.include_router(health.router)
 
     # 统一错误信封 — 必须在 router 之后注册才能覆盖 FastAPI 默认 422 响应

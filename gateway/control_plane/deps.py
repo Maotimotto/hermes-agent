@@ -131,6 +131,14 @@ class AppState:
         # ``get_templates_store`` dependency, so tests can monkey-patch the
         # storage path before the first read.
         self.templates_store: "TemplatesStore | None" = None
+        # V1.1 P1 Provider 转交：内存中的 handoff 记录索引。
+        # 重启清空可接受 — handoff 是「触发新 session」的一次性操作，
+        # 不是 session/turn 那种长生命周期的核心数据。
+        # 结构：
+        #   _handoffs[handoff_id] = HandoffRecord(dict 形式)
+        #   _handoffs_by_session[session_id] = [handoff_id, ...] (出向 + 入向)
+        self.handoffs: dict[str, dict] = {}
+        self.handoffs_by_session: dict[str, list[str]] = {}
 
     def ensure_approval_gate(self) -> ApprovalGate:
         """Construct the ApprovalGate once the store is ready.

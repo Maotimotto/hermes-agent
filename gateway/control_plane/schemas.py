@@ -196,6 +196,56 @@ class WorkspaceUnifiedDiffResponse(BaseModel):
     diffs: dict[str, str]
 
 
+# ── Handoff schemas（V1.1 P1 Provider 转交）─────────────────────────────────
+
+
+class HandoffCreate(BaseModel):
+    """POST /sessions/{from_session_id}/handoff request body."""
+
+    target_provider: Literal["claude", "codex"]
+    # transfer: Claude → Codex 把上下文交给另一个 provider 继续干
+    # review:   Codex → Claude 把当前 diff 拿去让 Claude 评审
+    kind: Literal["transfer", "review"] = "transfer"
+    include_diff: bool = True
+    extra_prompt: str | None = None
+    # 最近几条 assistant.message 作为上下文摘要（默认 6）
+    context_messages: int = Field(default=6, ge=0, le=50)
+
+
+class HandoffRecord(BaseModel):
+    """单条 handoff 记录（GET /handoffs/{id} 及列表项）。"""
+
+    id: str
+    created_at: str
+    from_session_id: str
+    to_session_id: str | None = None
+    from_provider: str
+    to_provider: str
+    kind: Literal["transfer", "review"] = "transfer"
+    context_summary: str = ""
+    initial_prompt: str = ""
+    status: Literal["ok", "failed"] = "ok"
+    error: str | None = None
+
+
+class HandoffResponse(BaseModel):
+    """POST /sessions/{id}/handoff 响应。"""
+
+    handoff_id: str
+    to_session_id: str | None = None
+    from_provider: str
+    to_provider: str
+    kind: str
+    status: str
+
+
+class HandoffListResponse(BaseModel):
+    """GET /sessions/{id}/handoffs 响应。"""
+
+    session_id: str
+    handoffs: list[HandoffRecord]
+
+
 # ── Health schema ───────────────────────────────────────────────────────────
 
 

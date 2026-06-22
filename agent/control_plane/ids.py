@@ -37,3 +37,8 @@ def new_event_id() -> str:
 def new_approval_id() -> str:
     """生成 approval ID：apr_xxxx。"""
     return f"apr_{_short_id()}"
+
+
+def new_handoff_id() -> str:
+    """生成 handoff ID：hdoff_xxxx（V1.1 P1 Provider 转交）。"""
+    return f"hdoff_{_short_id()}"

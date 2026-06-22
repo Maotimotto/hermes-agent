@@ -33,3 +33,5 @@ export { ExportButton } from "./ExportButton";
 export type { ExportButtonProps } from "./ExportButton";
 export { TemplatePicker } from "./TemplatePicker";
 export type { TemplatePickerProps } from "./TemplatePicker";
+export { HandoffPanel } from "./HandoffPanel";
+export type { HandoffPanelProps } from "./HandoffPanel";

@@ -27,6 +27,7 @@ import {
   DiffPanel,
   ExportButton,
   TemplatePicker,
+  HandoffPanel,
   ControlPlaneTopBar,
 } from "@/components/control-plane";
 
@@ -350,6 +351,22 @@ export default function ControlPlanePage() {
             <TemplatePicker onUse={(text) => setPrompt(text)} />
           </div>
         )}
+
+        {selectedSid && (
+          <HandoffPanel
+            sessionId={selectedSid}
+            currentProvider={
+              (sessions.find((s) => s.id === selectedSid)?.runtime_kind ??
+                null) as "claude" | "codex" | null
+            }
+            onHandoffCreated={(newSid) => {
+              const next = new URLSearchParams(searchParams);
+              next.set("session", newSid);
+              setSearchParams(next, { replace: true });
+            }}
+          />
+        )}
+
         {selectedSid && (
           <ChatComposer
             value={prompt}

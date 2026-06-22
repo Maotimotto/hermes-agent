@@ -38,3 +38,10 @@ export { useWorkspaceDiff } from "./useWorkspaceDiff";
 export type { DiffFileEntry, UseWorkspaceDiffResult } from "./useWorkspaceDiff";
 export { useTemplates } from "./useTemplates";
 export type { Template, TemplateParam, UseTemplatesReturn } from "./useTemplates";
+export { useHandoffs } from "./useHandoffs";
+export type {
+  HandoffRecord,
+  CreateHandoffInput,
+  CreateHandoffResponse,
+  UseHandoffsReturn,
+} from "./useHandoffs";
